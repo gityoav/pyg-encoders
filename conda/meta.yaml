@@ -1,0 +1,21 @@
+package:
+    name: pyg-encoders
+    version: 0.0.1
+
+source:
+    path: ../src
+	
+build:
+    include_recipe: False
+    number: 0
+    noarch: python
+
+requirements:
+    build:
+        - pyg-base          >=0.0.3
+    run:
+        - pyg-base          >=0.0.3
+        
+about:
+    home: https://github.com/gityoav/pyg-encoders
+    license: GNU
