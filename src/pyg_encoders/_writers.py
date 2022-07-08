@@ -1,5 +1,6 @@
 from pyg_encoders._encoders import csv_write, parquet_write, npy_write, _csv, _npy, _npa, _parquet, root_path
-from pyg_base import encode, decode, passthru, is_str, as_list
+from pyg_base import encode, decode 
+from pyg_base import passthru, is_str, as_list
 from functools import partial
 
 WRITERS = {_csv: csv_write , _npy: partial(npy_write, append = False), _npa: partial(npy_write, append = True), _parquet: parquet_write}

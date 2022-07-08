@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-# from bson.objectid import ObjectId
-from pyg_base import pd_to_parquet, pd_read_parquet, is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items
+from pyg_base import pd_to_parquet, pd_read_parquet
+from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import encode as encode
 from functools import partial
@@ -71,8 +71,7 @@ def root_path(doc, root, fmt = None, **kwargs):
             res = res.replace(text, '%s'% value)
     return res
 
-def _root_path(doc, root, fmt = None, **kwargs):
-    path = root_path(doc, root, fmt = fmt, **kwargs)
+def _check_path(path):
     if '%' in path:
         raise ValueError('The document did not contain enough keys to determine the path %s'%path)
     return path
@@ -130,8 +129,10 @@ def parquet_encode(value, path, compression = 'GZIP'):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
+        path = _check_path(path)
         return dict(_obj = _pd_read_parquet, path = pd_to_parquet(value, path + _parquet))
     elif is_arr(value):
+        path = _check_path(path)
         mkdir(path + _npy)
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
@@ -154,10 +155,12 @@ def npy_encode(value, path, append = False):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
+        path = _check_path(path)
         res = pd_to_npy(value, path, mode = mode)
         res[_obj] = _pd_read_npy
         return res
     elif is_arr(value):
+        path = _check_path(path)
         fname = path + _npy 
         np_save(fname, value, mode = mode)
         return dict(_obj = _np_load, file = fname)        
@@ -188,6 +191,7 @@ def csv_encode(value, path):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
+        path = _check_path(path)
         return dict(_obj = _pd_read_csv, path = pd_to_csv(value, path))
     elif is_dict(value):
         return type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
@@ -224,7 +228,7 @@ def npy_write(doc, root = None, append = True):
         root = doc[_db].keywords[_root]
     if root is None:
         return doc
-    path = _root_path(doc, root)
+    path = root_path(doc, root)
     return npy_encode(doc, path, append = append)
 
             
@@ -256,7 +260,7 @@ def parquet_write(doc, root = None):
         root = doc[_db].keywords[_root]
     if root is None:
         return doc
-    path = _root_path(doc, root)
+    path = root_path(doc, root)
     return parquet_encode(doc, path)
 
 def csv_write(doc, root = None):
@@ -280,7 +284,7 @@ def csv_write(doc, root = None):
         root = doc[_db].keywords[_root]
     if root is None:
         return doc
-    path = _root_path(doc, root)
+    path = root_path(doc, root)
     return csv_encode(doc, path)
 
 
