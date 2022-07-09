@@ -1,5 +1,5 @@
 from pyg_encoders._encoders import csv_write, parquet_write, npy_write, _csv, _npy, _npa, _parquet, root_path
-from pyg_base import encode, decode 
+from pyg_encoders._encode import encode, decode 
 from pyg_base import passthru, is_str, as_list
 from functools import partial
 

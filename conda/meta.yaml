@@ -13,8 +13,10 @@ build:
 requirements:
     build:
         - pyg-base          >=0.0.17
+        - pyg-npy           >=0.0.3
     run:
         - pyg-base          >=0.0.17
+        - pyg-npy           >=0.0.3
         
 about:
     home: https://github.com/gityoav/pyg-encoders
