@@ -1,6 +1,6 @@
 package:
     name: pyg-encoders
-    version: 0.0.1
+    version: 0.0.3
 
 source:
     path: ../src
@@ -12,11 +12,11 @@ build:
 
 requirements:
     build:
-        - pyg-base          >=0.0.17
-        - pyg-npy           >=0.0.3
+        - pyg-base          >=0.0.19
+        - pyg-npy           >=0.0.7
     run:
         - pyg-base          >=0.0.17
-        - pyg-npy           >=0.0.3
+        - pyg-npy           >=0.0.7
         
 about:
     home: https://github.com/gityoav/pyg-encoders

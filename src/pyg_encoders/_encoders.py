@@ -5,8 +5,9 @@ from pyg_encoders._encode import encode
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from functools import partial
+import pickle
 
-
+_pickle = '.pickle'
 _parquet = '.parquet'
 _npy = '.npy'; _npa = '.npa'
 _csv = '.csv'
@@ -14,6 +15,7 @@ _series = '_is_series'
 _root = 'root'
 _db = 'db'
 _obj = '_obj'
+_writer = 'writer'
 
 __all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write']
 
@@ -91,6 +93,17 @@ def pd_to_csv(value, path):
     value.to_csv(path)
     return path
 
+
+def pd_to_pickle(value, path):    
+    with open(path, 'wb') as f:
+        pickle.dump(value, f)
+    return path
+
+def pd_read_pickle(path):
+    with open(path) as f:
+        df = pickle.load(f)
+    return df
+
 def pd_read_csv(path):
     """
     A small utility to read both pd.Series and pd.DataFrame from csv files
@@ -106,8 +119,34 @@ def pd_read_csv(path):
 _pd_read_csv = encode(pd_read_csv)
 _pd_read_parquet = encode(pd_read_parquet)
 _pd_read_npy = encode(pd_read_npy)
+_pd_read_pickle = encode(pd_read_pickle)
 _np_load = encode(np.load)
 
+
+def pickle_encode(value, path):
+    """
+    encodes a single DataFrame or a document containing dataframes into a an abject of multiple pickled files that can be decoded
+    """
+    if path.endswith(_pickle):
+        path = path[:-len(_pickle)]
+    if path.endswith('/'):
+        path = path[:-1]
+    if is_pd(value):
+        path = _check_path(path)
+        return dict(_obj = _pd_read_pickle, path = pd_to_pickle(value, path + _pickle))
+    elif is_arr(value):
+        path = _check_path(path)
+        mkdir(path + _npy)
+        np.save(path + _npy, value)
+        return dict(_obj = _np_load, file = path + _npy)        
+    elif is_dict(value):
+        return type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+    elif isinstance(value, (list, tuple)):
+        return type(value)([pickle_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
+    else:
+        return value
+
+    
 def parquet_encode(value, path, compression = 'GZIP'):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded
@@ -172,7 +211,6 @@ def npy_encode(value, path, append = False):
         return value
     
 
-
 def csv_encode(value, path):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded while saving dataframes into csv
@@ -199,7 +237,18 @@ def csv_encode(value, path):
         return type(value)([csv_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
     else:
         return value
-    
+
+def _find_root(doc, root = None):
+    if _root in doc:
+        root  = doc[_root]
+    if root is None and _db in doc and isinstance(doc[_db], partial):
+        keywords = doc[_db].keywords
+        if _root in keywords:
+            root = keywords[_root]
+        elif _writer in keywords:
+            root = keywords[_writer]
+    return root
+
 def npy_write(doc, root = None, append = True):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
@@ -222,16 +271,43 @@ def npy_write(doc, root = None, append = True):
     >>> path ='c:/temp/%key'
 
     """
-    if _root in doc:
-        root  = doc[_root]
-    if root is None and _db in doc and isinstance(doc[_db], partial) and _root in doc[_db].keywords:
-        root = doc[_db].keywords[_root]
+    root = _find_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)
     return npy_encode(doc, path, append = append)
 
-            
+
+
+def pickle_write(doc, root = None):
+    """
+    MongoDB is great for manipulating/searching dict keys/values. 
+    However, the actual dataframes in each doc, we may want to save in a file system. 
+    - The DataFrames are stored as bytes in MongoDB anyway, so they are not searchable
+    - Storing in files allows other non-python/non-MongoDB users easier access, allowing data to be detached from app
+    - MongoDB free version has limitations on size of document
+    - file based system may be faster, especially if saved locally not over network
+    - for data licensing issues, data must not sit on servers but stored on local computer
+
+    Therefore, the doc encode will cycle through the elements in the doc. Each time it sees a pd.DataFrame/pd.Series, it will 
+    - determine where to write it (with the help of the doc)
+    - save it to a .parquet file
+
+    >>> from pyg_base import *
+    >>> from pyg_mongo import * 
+    >>> db = mongo_table(db = 'temp', table = 'temp', pk = 'key', writer = 'c:/temp/%key.pickle')         
+    >>> a = pd.DataFrame(dict(a = [1,2,3], b= [4,5,6]), index = drange(2)); b = pd.DataFrame(np.random.normal(0,1,(3,2)), columns = ['a','b'], index = drange(2))
+    >>> doc = dict(a = a, b = b, c = add_(a,b), key = 'b')
+    >>> path ='c:/temp/%key'
+
+    """
+    root = _find_root(doc, root)
+    if root is None:
+        return doc
+    path = root_path(doc, root)
+    return pickle_encode(doc, path)
+
+
 def parquet_write(doc, root = None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
@@ -254,10 +330,7 @@ def parquet_write(doc, root = None):
     >>> path ='c:/temp/%key'
 
     """
-    if _root in doc:
-        root  = doc[_root]
-    if root is None and _db in doc and isinstance(doc[_db], partial) and _root in doc[_db].keywords:
-        root = doc[_db].keywords[_root]
+    root = _find_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)
@@ -278,10 +351,7 @@ def csv_write(doc, root = None):
     - save it to a .csv file
 
     """
-    if _root in doc:
-        root  = doc[_root]
-    if root is None and _db in doc and isinstance(doc[_db], partial) and _root in doc[_db].keywords:
-        root = doc[_db].keywords[_root]
+    root = _find_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)

@@ -1,9 +1,9 @@
-from pyg_encoders._encoders import csv_write, parquet_write, npy_write, _csv, _npy, _npa, _parquet, root_path
+from pyg_encoders._encoders import csv_write, parquet_write, npy_write, pickle_write, _csv, _npy, _npa, _parquet, _pickle, root_path
 from pyg_encoders._encode import encode, decode 
 from pyg_base import passthru, is_str, as_list
 from functools import partial
 
-WRITERS = {_csv: csv_write , _npy: partial(npy_write, append = False), _npa: partial(npy_write, append = True), _parquet: parquet_write}
+WRITERS = {_csv: csv_write , _npy: partial(npy_write, append = False), _npa: partial(npy_write, append = True), _parquet: parquet_write, _pickle : pickle_write}
 
 def as_reader(reader = None):
     if isinstance(reader, list):
@@ -33,7 +33,7 @@ def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = N
                     return [partial(w, root = root), e]
                 else:
                     return [w, e]
-        raise ValueError('We support only csv/npy/parquet writers and writer should look like: c:/somewhere/%name/%surname.csv or d:/archive/%country/%city/results.parquet or with .npy')
+        raise ValueError('We support only csv/npy/parquet/parquet writers and writer should look like: c:/somewhere/%name/%surname.csv or d:/archive/%country/%city/results.parquet or with .npy or .pickle')
     else:
         return as_list(writer)
 
