@@ -17,7 +17,7 @@ _db = 'db'
 _obj = '_obj'
 _writer = 'writer'
 
-__all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write']
+__all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load']
 
 
 # def encode(value):
@@ -94,12 +94,13 @@ def pd_to_csv(value, path):
     return path
 
 
-def pd_to_pickle(value, path):    
+def pickle_dump(value, path):
+    mkdir(path)
     with open(path, 'wb') as f:
         pickle.dump(value, f)
     return path
 
-def pd_read_pickle(path):
+def pickle_load(path):
     with open(path) as f:
         df = pickle.load(f)
     return df
@@ -119,7 +120,7 @@ def pd_read_csv(path):
 _pd_read_csv = encode(pd_read_csv)
 _pd_read_parquet = encode(pd_read_parquet)
 _pd_read_npy = encode(pd_read_npy)
-_pd_read_pickle = encode(pd_read_pickle)
+_pickle_load = encode(pickle_load)
 _np_load = encode(np.load)
 
 
@@ -133,7 +134,7 @@ def pickle_encode(value, path):
         path = path[:-1]
     if is_pd(value):
         path = _check_path(path)
-        return dict(_obj = _pd_read_pickle, path = pd_to_pickle(value, path + _pickle))
+        return dict(_obj = _pickle_load, path = pickle_dump(value, path + _pickle))
     elif is_arr(value):
         path = _check_path(path)
         mkdir(path + _npy)
