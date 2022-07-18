@@ -239,7 +239,7 @@ def csv_encode(value, path):
     else:
         return value
 
-def _find_root(doc, root = None):
+def cell_root(doc, root = None):
     if _root in doc:
         root  = doc[_root]
     if root is None and _db in doc and isinstance(doc[_db], partial):
@@ -272,7 +272,7 @@ def npy_write(doc, root = None, append = True):
     >>> path ='c:/temp/%key'
 
     """
-    root = _find_root(doc, root)
+    root = cell_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)
@@ -302,7 +302,7 @@ def pickle_write(doc, root = None):
     >>> path ='c:/temp/%key'
 
     """
-    root = _find_root(doc, root)
+    root = cell_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)
@@ -331,7 +331,7 @@ def parquet_write(doc, root = None):
     >>> path ='c:/temp/%key'
 
     """
-    root = _find_root(doc, root)
+    root = cell_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)
@@ -352,7 +352,7 @@ def csv_write(doc, root = None):
     - save it to a .csv file
 
     """
-    root = _find_root(doc, root)
+    root = cell_root(doc, root)
     if root is None:
         return doc
     path = root_path(doc, root)
