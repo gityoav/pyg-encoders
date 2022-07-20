@@ -1,14 +1,15 @@
 import pandas as pd
 import numpy as np
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
-from pyg_encoders._encode import encode
-from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items
+from pyg_encoders._encode import encode, decode
+from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from functools import partial
 import pickle
 
 _pickle = '.pickle'
 _parquet = '.parquet'
+_dictable = '.dictable'
 _npy = '.npy'; _npa = '.npa'
 _csv = '.csv'
 _series = '_is_series'
@@ -96,14 +97,20 @@ def pd_to_csv(value, path):
 
 def pickle_dump(value, path):
     mkdir(path)
-    with open(path, 'wb') as f:
-        pickle.dump(value, f)
+    if hasattr(value, 'to_pickle'):
+        value.to_pickle(path) # use object specific implementation if available
+    else:
+        with open(path, 'wb') as f:
+            pickle.dump(value, f)
     return path
 
 def pickle_load(path):
-    with open(path) as f:
-        df = pickle.load(f)
-    return df
+    try:
+        with open(path) as f:
+            df = pickle.load(f)
+        return df
+    except Exception: #pandas read_pickle sometimes work when pickle.load fails
+        return pd.read_pickle(path) 
 
 def pd_read_csv(path):
     """
@@ -117,12 +124,17 @@ def pd_read_csv(path):
         res = res.set_index('index')
     return res
 
+def dictable_decoded(path):
+    res = dictable(pd.read_parquet(path)).rename(lambda _col: _col[1:-1] if _col.startswith('"') else _col)
+    res = res.do(decode)
+    return res
+
 _pd_read_csv = encode(pd_read_csv)
 _pd_read_parquet = encode(pd_read_parquet)
 _pd_read_npy = encode(pd_read_npy)
 _pickle_load = encode(pickle_load)
 _np_load = encode(np.load)
-
+_dictable_decoded = encode(dictable_decoded)
 
 def pickle_encode(value, path):
     """
@@ -141,13 +153,20 @@ def pickle_encode(value, path):
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
-        return type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+        res = type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+        if isinstance(value, dictable):
+            df = pd.DataFrame(res)
+            return dict(_obj = _dictable_decoded, 
+                        path =  pd_to_parquet_twice(df, path + _dictable))
+        return res
     elif isinstance(value, (list, tuple)):
         return type(value)([pickle_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
     else:
         return value
 
-    
+pd_to_parquet_twice = try_value(pd_to_parquet, repeat = 2, sleep = 1, return_value = False)
+
+
 def parquet_encode(value, path, compression = 'GZIP'):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded
@@ -170,14 +189,19 @@ def parquet_encode(value, path, compression = 'GZIP'):
         path = path[:-1]
     if is_pd(value):
         path = _check_path(path)
-        return dict(_obj = _pd_read_parquet, path = pd_to_parquet(value, path + _parquet))
+        return dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(value, path + _parquet))
     elif is_arr(value):
         path = _check_path(path)
         mkdir(path + _npy)
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
-        return type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression) for k, v in value.items()})
+        res = type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression) for k, v in value.items()})
+        if isinstance(value, dictable):
+            df = pd.DataFrame(res)
+            return dict(_obj = _dictable_decoded, 
+                        path =  pd_to_parquet_twice(df, path + _dictable))
+        return res
     elif isinstance(value, (list, tuple)):
         return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression) for i, v in enumerate(value)])
     else:
@@ -205,7 +229,12 @@ def npy_encode(value, path, append = False):
         np_save(fname, value, mode = mode)
         return dict(_obj = _np_load, file = fname)        
     elif is_dict(value):
-        return type(value)(**{k : npy_encode(v, '%s/%s'%(path,k), append = append) for k, v in value.items()})
+        res = type(value)(**{k : npy_encode(v, '%s/%s'%(path,k), append = append) for k, v in value.items()})
+        if isinstance(value, dictable):
+            df = pd.DataFrame(res)
+            return dict(_obj = _dictable_decoded, 
+                        path =  pd_to_parquet_twice(df, path + _dictable))
+        return res
     elif isinstance(value, (list, tuple)):
         return type(value)([npy_encode(v, '%s/%i'%(path,i), append = append) for i, v in enumerate(value)])
     else:
@@ -233,7 +262,12 @@ def csv_encode(value, path):
         path = _check_path(path)
         return dict(_obj = _pd_read_csv, path = pd_to_csv(value, path))
     elif is_dict(value):
-        return type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+        res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+        if isinstance(value, dictable):
+            df = pd.DataFrame(res)
+            return dict(_obj = _dictable_decoded, 
+                        path =  pd_to_parquet_twice(df, path + _dictable))
+        return res
     elif isinstance(value, (list, tuple)):
         return type(value)([csv_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
     else:
