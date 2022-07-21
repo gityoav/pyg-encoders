@@ -18,7 +18,7 @@ _db = 'db'
 _obj = '_obj'
 _writer = 'writer'
 
-__all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load']
+__all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load', 'dictable_decoded']
 
 
 # def encode(value):
