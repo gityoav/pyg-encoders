@@ -74,7 +74,7 @@ def root_path(doc, root, fmt = None, **kwargs):
             res = res.replace(text, '%s'% value)
     return res
 
-def _check_path(path):
+def root_path_check(path):
     if '%' in path:
         raise ValueError('The document did not contain enough keys to determine the path %s'%path)
     return path
@@ -145,10 +145,10 @@ def pickle_encode(value, path):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         return dict(_obj = _pickle_load, path = pickle_dump(value, path + _pickle))
     elif is_arr(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         mkdir(path + _npy)
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
@@ -188,10 +188,10 @@ def parquet_encode(value, path, compression = 'GZIP'):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         return dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(value, path + _parquet))
     elif is_arr(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         mkdir(path + _npy)
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
@@ -219,12 +219,12 @@ def npy_encode(value, path, append = False):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         res = pd_to_npy(value, path, mode = mode)
         res[_obj] = _pd_read_npy
         return res
     elif is_arr(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         fname = path + _npy 
         np_save(fname, value, mode = mode)
         return dict(_obj = _np_load, file = fname)        
@@ -259,7 +259,7 @@ def csv_encode(value, path):
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
-        path = _check_path(path)
+        path = root_path_check(path)
         return dict(_obj = _pd_read_csv, path = pd_to_csv(value, path))
     elif is_dict(value):
         res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
