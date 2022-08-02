@@ -18,7 +18,7 @@ _db = 'db'
 _obj = '_obj'
 _writer = 'writer'
 
-__all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load', 'dictable_decoded']
+__all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load', 'dictable_decode']
 
 
 # def encode(value):
@@ -124,17 +124,34 @@ def pd_read_csv(path):
         res = res.set_index('index')
     return res
 
-def dictable_decoded(path):
-    res = dictable(pd.read_parquet(path)).rename(lambda _col: _col[1:-1] if _col.startswith('"') else _col)
+def dictable_decode(df):
+    """
+    converts a dataframe with objects encoded into a dictable with decoded objects
+    """
+    res = dictable(df).rename(lambda _col: _col[1:-1] if _col.startswith('"') else _col)
     res = res.do(decode)
     return res
+
+# def dictable_decoded(path):
+#     if path.endswith(_pickle):
+#         df = pickle_load(path)
+#     elif path.endswith(_parquet):
+#         df = pd.read_parquet(path)
+#     else:
+#         try:
+#             df = pd.read_parquet(path)
+#         except Exception:
+#             df = pickle_load(path)
+#     return dictable_decode(df)    
 
 _pd_read_csv = encode(pd_read_csv)
 _pd_read_parquet = encode(pd_read_parquet)
 _pd_read_npy = encode(pd_read_npy)
 _pickle_load = encode(pickle_load)
 _np_load = encode(np.load)
-_dictable_decoded = encode(dictable_decoded)
+# _dictable_decoded = encode(dictable_decoded)
+_dictable_decode = encode(dictable_decode)
+
 
 def pickle_encode(value, path):
     """
@@ -156,8 +173,8 @@ def pickle_encode(value, path):
         res = type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
-            return dict(_obj = _dictable_decoded, 
-                        path =  pd_to_parquet_twice(df, path + _dictable))
+            return dict(_obj = _dictable_decode,
+                        df = dict(_obj = _pickle_load, path = pickle_dump(df, path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([pickle_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
@@ -199,8 +216,8 @@ def parquet_encode(value, path, compression = 'GZIP'):
         res = type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
-            return dict(_obj = _dictable_decoded, 
-                        path =  pd_to_parquet_twice(df, path + _dictable))
+            return dict(_obj = _dictable_decode,
+                        df = dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(df, path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression) for i, v in enumerate(value)])
@@ -232,8 +249,8 @@ def npy_encode(value, path, append = False):
         res = type(value)(**{k : npy_encode(v, '%s/%s'%(path,k), append = append) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
-            return dict(_obj = _dictable_decoded, 
-                        path =  pd_to_parquet_twice(df, path + _dictable))
+            return dict(_obj = _dictable_decode,
+                        df = dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(df, path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([npy_encode(v, '%s/%i'%(path,i), append = append) for i, v in enumerate(value)])
@@ -265,8 +282,8 @@ def csv_encode(value, path):
         res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
-            return dict(_obj = _dictable_decoded, 
-                        path =  pd_to_parquet_twice(df, path + _dictable))
+            return dict(_obj = _dictable_decode, 
+                        df = dict(_obj = _pd_read_csv, path = pd_to_csv(df, path)))
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([csv_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
