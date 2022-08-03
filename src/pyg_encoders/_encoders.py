@@ -124,32 +124,29 @@ def pd_read_csv(path):
         res = res.set_index('index')
     return res
 
-def dictable_decode(df):
+def dictable_decode(df, loader = None):
     """
     converts a dataframe with objects encoded into a dictable with decoded objects
+    :Parameters:
+    ------------
+    df: str/dataframe/dictable
+        items that can be converted into a dictable
+    loader: df may need to be loaded if it is e.g. a path to a sql database
+    
     """
-    res = dictable(df).rename(lambda _col: _col[1:-1] if _col.startswith('"') else _col)
+    if loader is not None and not isinstance(df, dictable):
+        df = loader(df)
+    res = dictable(df)
+    res = res.rename(lambda _col: _col[1:-1] if _col.startswith('"') else _col)
     res = res.do(decode)
     return res
 
-# def dictable_decoded(path):
-#     if path.endswith(_pickle):
-#         df = pickle_load(path)
-#     elif path.endswith(_parquet):
-#         df = pd.read_parquet(path)
-#     else:
-#         try:
-#             df = pd.read_parquet(path)
-#         except Exception:
-#             df = pickle_load(path)
-#     return dictable_decode(df)    
 
 _pd_read_csv = encode(pd_read_csv)
 _pd_read_parquet = encode(pd_read_parquet)
 _pd_read_npy = encode(pd_read_npy)
 _pickle_load = encode(pickle_load)
 _np_load = encode(np.load)
-# _dictable_decoded = encode(dictable_decoded)
 _dictable_decode = encode(dictable_decode)
 
 
@@ -163,7 +160,7 @@ def pickle_encode(value, path):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        return dict(_obj = _pickle_load, path = pickle_dump(value, path + _pickle))
+        return dict(_obj = _pickle_load, path = pickle_dump(value, path if path.endswith(_pickle) else path + _pickle))
     elif is_arr(value):
         path = root_path_check(path)
         mkdir(path + _npy)
@@ -172,9 +169,8 @@ def pickle_encode(value, path):
     elif is_dict(value):
         res = type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
         if isinstance(value, dictable):
-            df = pd.DataFrame(res)
             return dict(_obj = _dictable_decode,
-                        df = dict(_obj = _pickle_load, path = pickle_dump(df, path + _dictable)))
+                        df = dict(_obj = _pickle_load, path = pickle_dump(res, path if path.endswith(_dictable) else path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([pickle_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
