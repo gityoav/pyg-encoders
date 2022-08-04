@@ -1,6 +1,6 @@
 import jsonpickle as jp
 import re
-from pyg_base import is_int, is_float, is_str, is_date, is_bool, is_pd, is_arr, as_list , dt, iso, uk2dt, dt2str, try_back, logger, loop, getargs, dictable, as_primitive
+from pyg_base import is_int, cache_func, cache, is_float, is_str, is_date, is_bool, is_pd, is_arr, as_list , dt, iso, uk2dt, dt2str, try_back, logger, loop, getargs, dictable, as_primitive
 
 import pickle
 import datetime
@@ -107,10 +107,23 @@ def decode(value, date = None):
     >>> encoded = encode(orig)
     >>> assert eq(decode(encoded), orig) # type matching too...
     
+    
+    >>> from pyg import * 
+    >>> f = cache(add_)
+    >>> decode(encode(f)) == cache(add_)
+    >>> f(1,2)
+    >>> decode(encode(f)) == cache(add_)
+    
+    >>> g = partial(f, b = 2)
+    >>> assert not eq(decode(encode(g)) , g) ## because g has a cache
+    >>> assert eq(decode(encode(g)) , partial(cache(add_), b = 2))
+    
     """
     return _decode(value, date = date)
 
 loads = partial(decode, date = True)
+def partial_(func, args, keywords):
+    return partial(func, *args, **keywords)
 
 @loop(list, tuple)
 def _encode(value, unchanged = None, unchanged_keys = None):
@@ -138,7 +151,9 @@ def _encode(value, unchanged = None, unchanged_keys = None):
         if _obj not in res:
             res[_obj] = _encode(type(value))
         res['columns'] = value.columns
-        return res
+        return res    
+    elif isinstance(value, cache_func) and hasattr(value, 'cache') and len(value.cache):
+        return _encode(cache(value.function))
     elif isinstance(value, dict):
         unchanged_keys = as_list(unchanged_keys)
         res = {k : v if unchanged_keys and k in unchanged_keys else _encode(v, unchanged, unchanged_keys) for k, v in value.items()}
@@ -156,18 +171,18 @@ def _encode(value, unchanged = None, unchanged_keys = None):
             return {_data : pd2bson(value), _obj : _bson2pd}
         else:
             return {_data : value.tobytes(), 'shape' : value.shape, 'dtype' : encode(value.dtype), _obj : _bson2np}
-    else:
-        if hasattr(value, 'cache'):
-            try:
-                cache = value.cache
-                del value.cache
-                res = jp.encode(value)
-                value.cache = cache
-            except AttributeError:
-                res = jp.encode(value)
-        else:
-            res = jp.encode(value)
+    elif isinstance(value, partial):
+        func = _encode(value.func)
+        args = _encode(value.args)
+        keywords = _encode(value.keywords)
+        res = dict(_obj = _partial, func = func, args = args, keywords = keywords)
         return res
+    else:
+        res = jp.encode(value)
+        return res
+
+_partial = _encode(partial_)
+
 
 def encode(value, unchanged = None, unchanged_keys = None):
     """
