@@ -1,13 +1,19 @@
 from pyg_encoders._encoders import csv_write, parquet_write, npy_write, pickle_write, _csv, _npy, _npa, _parquet, _pickle, root_path
 from pyg_encoders._encode import encode, decode 
-from pyg_base import passthru, is_str, as_list
+from pyg_base import passthru, is_str, as_list, get_cache
 from functools import partial
 
-WRITERS = {_csv: csv_write , 
-           _npy: partial(npy_write, append = False), 
-           _npa: partial(npy_write, append = True), 
-           _parquet: parquet_write, 
-           _pickle : pickle_write}
+
+_WRITERS = 'WRITERS'
+if _WRITERS not in get_cache():
+    get_cache()[_WRITERS] = {}
+    
+WRITERS = get_cache()[_WRITERS]
+WRITERS.update({_csv: csv_write , 
+               _npy: partial(npy_write, append = False), 
+               _npa: partial(npy_write, append = True), 
+               _parquet: parquet_write, 
+               _pickle : pickle_write})
 
 def as_reader(reader = None):
     """
@@ -58,15 +64,17 @@ def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = N
         return [passthru]
     elif is_str(writer):
         for ext, w in WRITERS.items():
-            if writer.endswith(ext):
+            if writer.lower().endswith(ext):
                 root = writer[:-len(ext)]                    
-                if root:
+                if len(root)>0:
                     if kwargs:
                         root = root_path(kwargs, root)
                     return [partial(w, root = root), e]
                 else:
                     return [w, e]
-        raise ValueError('We support only csv/npy/parquet/parquet writers and writer should look like: c:/somewhere/%name/%surname.csv or d:/archive/%country/%city/results.parquet or with .npy or .pickle')
+        err = 'Could not convert "%s" into a valid writer.\nAt the moment we support these extenstions: \n%s'%(writer, '\n'.join('%s maps to %s'%(k,v) for k,v in WRITERS.items()))
+        err += '\nWriter should look like "d:/archive/%country/%city/results.parquet"'
+        raise ValueError(err)
     else:
         return as_list(writer)
 

@@ -141,6 +141,8 @@ def dictable_decode(df, loader = None):
     res = res.do(decode)
     return res
 
+def dictable_decoded(path):
+    return dictable_decode(path)
 
 _pd_read_csv = encode(pd_read_csv)
 _pd_read_parquet = encode(pd_read_parquet)
