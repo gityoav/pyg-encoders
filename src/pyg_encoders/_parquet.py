@@ -3,17 +3,18 @@ from pyg_base._types import is_series, is_df, is_int, is_date, is_bool, is_str, 
 from pyg_base._dates import dt2str, dt
 from pyg_base._logger import logger
 from pyg_base._as_list import as_list
+from pyg_base import bi_read, is_bi, bi_merge, Bi
 import pandas as pd
 import numpy as np
 import jsonpickle as jp
+from pyg_base._bitemporal import _series
 
-_series = '_is_series'
 
 __all__ = ['pd_to_parquet', 'pd_read_parquet']
 
 
 
-def pd_to_parquet(value, path, compression = 'GZIP'):
+def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
     """
     a small utility to save df to parquet, extending both pd.Series and non-string columns    
 
@@ -42,6 +43,15 @@ def pd_to_parquet(value, path, compression = 'GZIP'):
     >>> assert eq(s, s2)
 
     """
+    if asof is not None:
+        value = Bi(value, asof)
+    if is_bi(value):
+        try:
+            old = pd_read_parquet(path)
+            if old is not None:
+                value = bi_merge(old, value)
+        except Exception:
+            pass
     if is_series(value):
         mkdir(path)
         df = pd.DataFrame(value)
@@ -62,7 +72,7 @@ def pd_to_parquet(value, path, compression = 'GZIP'):
     else:
         return value        
 
-def pd_read_parquet(path, **kwargs):
+def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
     """
     a small utility to read df/series from parquet, extending both pd.Series and non-string columns 
 
@@ -91,12 +101,17 @@ def pd_read_parquet(path, **kwargs):
     >>> assert eq(s, s2)
 
     """
+    if '@' in path:
+        path, asof = path.split('@')
+        asof = dt(asof)
     path = path_name(path)
     try:
         df = pd.read_parquet(path)
     except Exception:
         logger.warning('WARN: unable to read pd.read_parquet("%s")'%path)
         return None
+    if asof is not None or is_bi(df):
+        df = bi_read(df, asof, what = what)
     if df.columns[-1] == _series:
         if len(df.columns) == 1:
             res = df[_series]

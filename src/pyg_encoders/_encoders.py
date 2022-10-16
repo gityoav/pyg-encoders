@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
-from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value
+from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
+from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
 from functools import partial
 import pickle
 
@@ -79,11 +80,13 @@ def root_path_check(path):
         raise ValueError('The document did not contain enough keys to determine the path %s'%path)
     return path
 
-def pd_to_csv(value, path):
+def pd_to_csv(value, path, asof = None):
     """
     A small utility to write both pd.Series and pd.DataFrame to csv files
     """
     assert is_pd(value), 'cannot save non-pd'
+    if asof is not None:
+        value = Bi(value, asof)
     if is_series(value):
         value.index.name = _series
     if value.index.name is None:
@@ -91,12 +94,22 @@ def pd_to_csv(value, path):
     if path[-4:].lower()!=_csv:
         path = path + _csv
     mkdir(path)
+    if is_bi(value):
+        old = try_none(pd_read_csv)(path)
+        if old is not None:
+            value = bi_merge(old, value)
     value.to_csv(path)
     return path
 
 
-def pickle_dump(value, path):
+def pickle_dump(value, path, asof = None):
     mkdir(path)
+    if asof is not None:
+        value = Bi(value, asof)
+    if is_bi(value):
+        old  = try_none(pickle_load)(path)
+        if old is not None:
+            value = bi_merge(old, value)
     if hasattr(value, 'to_pickle'):
         value.to_pickle(path) # use object specific implementation if available
     else:
@@ -104,19 +117,30 @@ def pickle_dump(value, path):
             pickle.dump(value, f)
     return path
 
-def pickle_load(path):
+def pickle_load(path, asof = None, what = 'last'):
+    if '@' in path:
+        path, asof = path.split('@')
+        asof = dt(asof)
     try:
         with open(path) as f:
             df = pickle.load(f)
-        return df
     except Exception: #pandas read_pickle sometimes work when pickle.load fails
-        return pd.read_pickle(path) 
+        df = pd.read_pickle(path)
+    if is_bi(df) or asof is not None:
+        df = bi_read(df, asof, what)
+    return df
+            
 
-def pd_read_csv(path):
+def pd_read_csv(path, asof = None, what = 'last'):
     """
     A small utility to read both pd.Series and pd.DataFrame from csv files
     """
+    if '@' in path:
+        path, asof = path.split('@')
+        asof = dt(asof)    
     res = pd.read_csv(path)
+    if is_bi(res) or asof is not None:
+        res = bi_read(res, asof, what)
     if res.columns[0] == _series and res.shape[1] == 2:
         res = pd.Series(res[res.columns[1]], res[_series].values)
         return res
@@ -152,37 +176,45 @@ _np_load = encode(np.load)
 _dictable_decode = encode(dictable_decode)
 
 
-def pickle_encode(value, path):
+def pickle_encode(value, path, asof = None):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject of multiple pickled files that can be decoded
     """
+    if '@' in path:
+        path, asof = path.split('@')
+        asof = dt(asof)
     if path.endswith(_pickle):
         path = path[:-len(_pickle)]
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
+        if asof is not None:
+            value = Bi(value, asof)
         path = root_path_check(path)
-        return dict(_obj = _pickle_load, path = pickle_dump(value, path if path.endswith(_pickle) else path + _pickle))
+        return dict(_obj = _pickle_load, 
+                    path = pickle_dump(value, path if path.endswith(_pickle) else path + _pickle, asof),
+                    asof = asof)
     elif is_arr(value):
         path = root_path_check(path)
         mkdir(path + _npy)
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
-        res = type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+        res = type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k), asof) for k, v in value.items()})
         if isinstance(value, dictable):
             return dict(_obj = _dictable_decode,
-                        df = dict(_obj = _pickle_load, path = pickle_dump(res, path if path.endswith(_dictable) else path + _dictable)))
+                        df = dict(_obj = _pickle_load, 
+                                  path = pickle_dump(res, path if path.endswith(_dictable) else path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
-        return type(value)([pickle_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
+        return type(value)([pickle_encode(v, '%s/%i'%(path,i), asof) for i, v in enumerate(value)])
     else:
         return value
 
 pd_to_parquet_twice = try_value(pd_to_parquet, repeat = 2, sleep = 1, return_value = False)
 
 
-def parquet_encode(value, path, compression = 'GZIP'):
+def parquet_encode(value, path, compression = 'GZIP', asof = None):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded
 
@@ -198,27 +230,32 @@ def parquet_encode(value, path, compression = 'GZIP'):
     >>> assert eq(decoded, value)
 
     """
+    if '@' in path:
+        path, asof = path.split('@')
+        asof = dt(asof)
     if path.endswith(_parquet):
         path = path[:-len(_parquet)]
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        return dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(value, path + _parquet))
+        return dict(_obj = _pd_read_parquet, 
+                    path = pd_to_parquet_twice(value, path + _parquet),
+                    asof = asof)
     elif is_arr(value):
         path = root_path_check(path)
         mkdir(path + _npy)
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
-        res = type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression) for k, v in value.items()})
+        res = type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression, asof = asof) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
             return dict(_obj = _dictable_decode,
                         df = dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(df, path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
-        return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression) for i, v in enumerate(value)])
+        return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression, asof = asof) for i, v in enumerate(value)])
     else:
         return value
     
@@ -256,7 +293,7 @@ def npy_encode(value, path, append = False):
         return value
     
 
-def csv_encode(value, path):
+def csv_encode(value, path, asof = None):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded while saving dataframes into csv
     
@@ -269,13 +306,18 @@ def csv_encode(value, path):
     >>> decoded = decode(encoded)
     >>> assert eq(decoded, value)
     """
+    if '@' in path:
+        path, asof = path.split('@')
+        asof = dt(asof)
     if path.endswith(_csv):
         path = path[:-len(_csv)]
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        return dict(_obj = _pd_read_csv, path = pd_to_csv(value, path))
+        return dict(_obj = _pd_read_csv, 
+                    path = pd_to_csv(value, path, asof = asof),
+                    asof = asof)
     elif is_dict(value):
         res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
         if isinstance(value, dictable):
@@ -299,7 +341,7 @@ def cell_root(doc, root = None):
             root = keywords[_writer]
     return root
 
-def npy_write(doc, root = None, append = True):
+def npy_write(doc, root = None, append = True, asof = None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -329,7 +371,7 @@ def npy_write(doc, root = None, append = True):
 
 
 
-def pickle_write(doc, root = None):
+def pickle_write(doc, root = None, asof = None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -355,10 +397,10 @@ def pickle_write(doc, root = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return pickle_encode(doc, path)
+    return pickle_encode(doc, path, asof = asof)
 
 
-def parquet_write(doc, root = None):
+def parquet_write(doc, root = None, asof = None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -384,9 +426,9 @@ def parquet_write(doc, root = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return parquet_encode(doc, path)
+    return parquet_encode(doc, path, asof = asof)
 
-def csv_write(doc, root = None):
+def csv_write(doc, root = None, asof = None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -405,6 +447,6 @@ def csv_write(doc, root = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return csv_encode(doc, path)
+    return csv_encode(doc, path, asof = asof)
 
 

@@ -1,6 +1,6 @@
 from pyg_encoders._encoders import csv_write, parquet_write, npy_write, pickle_write, _csv, _npy, _npa, _parquet, _pickle, root_path
 from pyg_encoders._encode import encode, decode 
-from pyg_base import passthru, is_str, as_list, get_cache
+from pyg_base import passthru, is_str, as_list, get_cache, dt, getargspec
 from functools import partial
 
 
@@ -28,7 +28,7 @@ def as_reader(reader = None):
     else:
         return [reader]
 
-def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = None):
+def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = None, asof = None):
     """
     returns a list of functions that convert a document into an object that can be pushed into the storage mechanism we want
 
@@ -63,15 +63,18 @@ def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = N
     elif writer is False or writer == 0:
         return [passthru]
     elif is_str(writer):
+        if '@' in writer:
+            writer, asof = writer.split('@')
+            asof = dt(asof)
         for ext, w in WRITERS.items():
             if writer.lower().endswith(ext):
                 root = writer[:-len(ext)]                    
                 if len(root)>0:
                     if kwargs:
                         root = root_path(kwargs, root)
-                    return [partial(w, root = root), e]
+                    return [partial(w, root = root, asof = asof), e] if asof and ('asof' in getargspec(w).args) else [partial(w, root = root), e]
                 else:
-                    return [w, e]
+                    return [partial(w, asof = asof), e] if asof and ('asof' in getargspec(w).args) else [w,e]
         err = 'Could not convert "%s" into a valid writer.\nAt the moment we support these extenstions: \n%s'%(writer, '\n'.join('%s maps to %s'%(k,v) for k,v in WRITERS.items()))
         err += '\nWriter should look like "d:/archive/%country/%city/results.parquet"'
         raise ValueError(err)
