@@ -102,14 +102,22 @@ def pd_to_csv(value, path, asof = None):
     return path
 
 
+def _pickle_raw(path):
+    try:
+        with open(path) as f:
+            df = pickle.load(f)
+    except Exception: #pandas read_pickle sometimes work when pickle.load fails
+        df = pd.read_pickle(path)
+    return df
+
+
 def pickle_dump(value, path, asof = None):
     mkdir(path)
     if asof is not None:
         value = Bi(value, asof)
     if is_bi(value):
-        old  = try_none(pickle_load)(path)
-        if old is not None:
-            value = bi_merge(old, value)
+        old  = try_none(_pickle_raw)(path)
+        value = bi_merge(old, value)
     if hasattr(value, 'to_pickle'):
         value.to_pickle(path) # use object specific implementation if available
     else:
@@ -117,15 +125,11 @@ def pickle_dump(value, path, asof = None):
             pickle.dump(value, f)
     return path
 
+
 def pickle_load(path, asof = None, what = 'last'):
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)
-    try:
-        with open(path) as f:
-            df = pickle.load(f)
-    except Exception: #pandas read_pickle sometimes work when pickle.load fails
-        df = pd.read_pickle(path)
+    df = _pickle_raw(path)
     if is_bi(df) or asof is not None:
         df = bi_read(df, asof, what)
     return df
@@ -137,7 +141,7 @@ def pd_read_csv(path, asof = None, what = 'last'):
     """
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)    
+        asof = dt(asof)
     res = pd.read_csv(path)
     if is_bi(res) or asof is not None:
         res = bi_read(res, asof, what)
@@ -182,18 +186,18 @@ def pickle_encode(value, path, asof = None):
     """
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)
     if path.endswith(_pickle):
         path = path[:-len(_pickle)]
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
-        if asof is not None:
-            value = Bi(value, asof)
         path = root_path_check(path)
-        return dict(_obj = _pickle_load, 
-                    path = pickle_dump(value, path if path.endswith(_pickle) else path + _pickle, asof),
-                    asof = asof)
+        path = path if path.endswith(_pickle) else path + _pickle
+        path = pickle_dump(value, path = path, asof = asof)
+        if asof is None:
+            return dict(_obj = _pickle_load, path = path)
+        else:
+            return dict(_obj = _pickle_load, path = path, asof = dt()) 
     elif is_arr(value):
         path = root_path_check(path)
         mkdir(path + _npy)
@@ -232,16 +236,17 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None):
     """
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)
     if path.endswith(_parquet):
         path = path[:-len(_parquet)]
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        return dict(_obj = _pd_read_parquet, 
-                    path = pd_to_parquet_twice(value, path + _parquet),
-                    asof = asof)
+        path = pd_to_parquet_twice(value, path + _parquet, asof = asof)
+        if asof is None:
+            return dict(_obj = _pd_read_parquet, path = path)
+        else:
+            return dict(_obj = _pd_read_parquet, path = path, asof = dt())
     elif is_arr(value):
         path = root_path_check(path)
         mkdir(path + _npy)
@@ -252,7 +257,8 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None):
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
             return dict(_obj = _dictable_decode,
-                        df = dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(df, path + _dictable)))
+                        df = dict(_obj = _pd_read_parquet, 
+                                  path = pd_to_parquet_twice(df, path + _dictable)))
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression, asof = asof) for i, v in enumerate(value)])
@@ -308,16 +314,17 @@ def csv_encode(value, path, asof = None):
     """
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)
     if path.endswith(_csv):
         path = path[:-len(_csv)]
     if path.endswith('/'):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        return dict(_obj = _pd_read_csv, 
-                    path = pd_to_csv(value, path, asof = asof),
-                    asof = asof)
+        path = pd_to_csv(value, path, asof = asof)
+        if asof is None:
+            return dict(_obj = _pd_read_csv, path = path)
+        else:
+            return dict(_obj = _pd_read_csv, path = path, asof = dt())
     elif is_dict(value):
         res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
         if isinstance(value, dictable):

@@ -47,7 +47,7 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
         value = Bi(value, asof)
     if is_bi(value):
         try:
-            old = pd_read_parquet(path)
+            old = _read_parquet(path)
             if old is not None:
                 value = bi_merge(old, value)
         except Exception:
@@ -72,6 +72,15 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
     else:
         return value        
 
+def _read_parquet(path):
+    try:
+        df = pd.read_parquet(path)
+    except Exception:
+        logger.warning('WARN: unable to read pd.read_parquet("%s")'%path)
+        return None
+    df.columns = [c[1:-1] if is_str(c) and c.startswith('"') and c.endswith('"') else c for c in df.columns]
+    return df
+    
 def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
     """
     a small utility to read df/series from parquet, extending both pd.Series and non-string columns 
@@ -105,21 +114,18 @@ def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
         path, asof = path.split('@')
         asof = dt(asof)
     path = path_name(path)
-    try:
-        df = pd.read_parquet(path)
-    except Exception:
-        logger.warning('WARN: unable to read pd.read_parquet("%s")'%path)
-        return None
+    df = _read_parquet(path)
     if asof is not None or is_bi(df):
         df = bi_read(df, asof, what = what)
-    if df.columns[-1] == _series:
-        if len(df.columns) == 1:
-            res = df[_series]
-            res.name = None
-            return res
+    if is_df(df):
+        if df.columns[-1] == _series:
+            if len(df.columns) == 1:
+                res = df[_series]
+                res.name = None
+                return res
+            else:
+                return pd.Series({jp.loads(k) : df[k].values[0] for k in df.columns[:-1]})
         else:
-            return pd.Series({jp.loads(k) : df[k].values[0] for k in df.columns[:-1]})
-    else:
-        df.columns = [jp.loads(col) for col in df.columns]
-        return df
+            df.columns = [jp.loads(col) for col in df.columns]
+    return df
 
