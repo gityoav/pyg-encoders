@@ -2,24 +2,28 @@ from pyg import *
 
 def f():
     t = dt()
-    return pd.Series([9]*10, drange(-9))
+    return pd.Series([dt().second]*10, drange(-9))
 
 
-def test_bitemp():
+def test_bitemp_parquet():
     db = partial(mongo_table, db = 'test', table = 'test', pk = 'key',
                   writer = 'c:/test/%key.parquet@now')
     db().drop()
+    db().deleted.drop()
     c = db_cell(f, db = db, key = 'bi').go()
     db()[0]
-    db().deleted.inc(key = 'bi')[-4]
+    assert eq(pd_read_parquet('c:/test/bi/data.parquet', dt()), c.data)
 
-    pd.read_parquet('c:/test/bi/data.parquet')
 
 def test_bitemp_pickle():
     db = partial(mongo_table, db = 'test', table = 'test', pk = 'key',
                   writer = 'c:/test/%key.pickle@now')
-
+    db().deleted.drop()
+    db().drop()
     c = db_cell(f, db = db, key = 'bi').go()
-    db().deleted[-2]
-
+    assert '_asof' in pickle_load('c:/test/bi/data.pickle').columns
+    assert '_asof' not in pickle_load('c:/test/bi/data.pickle', asof = dt())
+    c = db_cell(f, db = db, key = 'bi').go()
+    db().deleted.inc(key = 'bi').read(0, passthru) 
+    pickle_load('c:/test/bi/data.pickle')
 
