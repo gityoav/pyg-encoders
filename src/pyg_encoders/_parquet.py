@@ -76,7 +76,7 @@ def _read_parquet(path):
     except Exception:
         logger.warning('WARN: unable to read pd.read_parquet("%s")'%path)
         return None
-    df.columns = [c[1:-1] if is_str(c) and c.startswith('"') and c.endswith('"') else c for c in df.columns]
+    df.columns = [jp.loads(col) for col in df.columns]
     return df
     
 def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
@@ -122,7 +122,5 @@ def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
                 return res
             else:
                 return pd.Series({jp.loads(k) : df[k].values[0] for k in df.columns[:-1]})
-        else:
-            df.columns = [jp.loads(col) for col in df.columns]
     return df
 
