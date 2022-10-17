@@ -83,8 +83,9 @@ def root_path_check(path):
 def pd_to_csv(value, path, asof = None):
     """
     A small utility to write both pd.Series and pd.DataFrame to csv files
-    """
-    assert is_pd(value), 'cannot save non-pd'
+    """    
+    if '@' in path:
+        path, asof = path.split('@')    
     if asof is not None:
         value = Bi(value, asof)
     if is_series(value):
@@ -96,8 +97,7 @@ def pd_to_csv(value, path, asof = None):
     mkdir(path)
     if is_bi(value):
         old = try_none(pd_read_csv)(path)
-        if old is not None:
-            value = bi_merge(old, value)
+        value = bi_merge(old, value)
     value.to_csv(path)
     return path
 
@@ -112,6 +112,8 @@ def _pickle_raw(path):
 
 
 def pickle_dump(value, path, asof = None):
+    if '@' in path:
+        path, asof = path.split('@')
     mkdir(path)
     if asof is not None:
         value = Bi(value, asof)
@@ -130,7 +132,7 @@ def pickle_load(path, asof = None, what = 'last'):
     if '@' in path:
         path, asof = path.split('@')
     df = _pickle_raw(path)
-    if is_bi(df) or asof is not None:
+    if asof is not None:
         df = bi_read(df, asof, what)
     return df
             
@@ -141,9 +143,8 @@ def pd_read_csv(path, asof = None, what = 'last'):
     """
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)
     res = pd.read_csv(path)
-    if is_bi(res) or asof is not None:
+    if asof is not None:
         res = bi_read(res, asof, what)
     if res.columns[0] == _series and res.shape[1] == 2:
         res = pd.Series(res[res.columns[1]], res[_series].values)

@@ -3,7 +3,7 @@ from pyg_base._types import is_series, is_df, is_int, is_date, is_bool, is_str, 
 from pyg_base._dates import dt2str, dt
 from pyg_base._logger import logger
 from pyg_base._as_list import as_list
-from pyg_base import bi_read, is_bi, bi_merge, Bi
+from pyg_base import try_none, bi_read, is_bi, bi_merge, Bi
 import pandas as pd
 import numpy as np
 import jsonpickle as jp
@@ -43,15 +43,13 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
     >>> assert eq(s, s2)
 
     """
+    if '@' in path:
+        path, asof = path.split('@')
     if asof is not None:
         value = Bi(value, asof)
     if is_bi(value):
-        try:
-            old = _read_parquet(path)
-            if old is not None:
-                value = bi_merge(old, value)
-        except Exception:
-            pass
+        old = try_none(_read_parquet)(path)
+        value = bi_merge(old, value)
     if is_series(value):
         mkdir(path)
         df = pd.DataFrame(value)
@@ -112,10 +110,9 @@ def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
     """
     if '@' in path:
         path, asof = path.split('@')
-        asof = dt(asof)
     path = path_name(path)
     df = _read_parquet(path)
-    if asof is not None or is_bi(df):
+    if asof is not None:
         df = bi_read(df, asof, what = what)
     if is_df(df):
         if df.columns[-1] == _series:
