@@ -7,7 +7,7 @@ from pyg_base import try_none, bi_read, is_bi, bi_merge, Bi
 import pandas as pd
 import numpy as np
 import jsonpickle as jp
-from pyg_base._bitemporal import _series
+from pyg_base._bitemporal import _series, _asof
 
 
 __all__ = ['pd_to_parquet', 'pd_read_parquet']
@@ -47,9 +47,6 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
         path, asof = path.split('@')
     if asof is not None:
         value = Bi(value, asof)
-    if is_bi(value):
-        old = try_none(_read_parquet)(path)
-        value = bi_merge(old, value)
     if is_series(value):
         mkdir(path)
         df = pd.DataFrame(value)
@@ -62,6 +59,9 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
             df.to_parquet(path, compression = compression)
         return path
     elif is_df(value):
+        if _asof in value.columns:
+            old = try_none(_read_parquet)(path)
+            value = bi_merge(old, value)
         mkdir(path)
         df = value.copy()
         df.columns = [jp.dumps(col) for col in df.columns]
@@ -76,7 +76,10 @@ def _read_parquet(path):
     except Exception:
         logger.warning('WARN: unable to read pd.read_parquet("%s")'%path)
         return None
-    df.columns = [jp.loads(col) for col in df.columns]
+    try:    
+        df.columns = [jp.loads(col) for col in df.columns]
+    except Exception:
+        pass
     return df
     
 def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
@@ -108,8 +111,6 @@ def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
     >>> assert eq(s, s2)
 
     """
-    if '@' in path:
-        path, asof = path.split('@')
     path = path_name(path)
     df = _read_parquet(path)
     if asof is not None:

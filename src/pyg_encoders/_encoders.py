@@ -5,6 +5,7 @@ from pyg_encoders._encode import encode, decode
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
+from pyg_base._bitemporal import _asof
 from functools import partial
 import pickle
 
@@ -129,8 +130,6 @@ def pickle_dump(value, path, asof = None):
 
 
 def pickle_load(path, asof = None, what = 'last'):
-    if '@' in path:
-        path, asof = path.split('@')
     df = _pickle_raw(path)
     if asof is not None:
         df = bi_read(df, asof, what)
@@ -141,8 +140,6 @@ def pd_read_csv(path, asof = None, what = 'last'):
     """
     A small utility to read both pd.Series and pd.DataFrame from csv files
     """
-    if '@' in path:
-        path, asof = path.split('@')
     res = pd.read_csv(path)
     if asof is not None:
         res = bi_read(res, asof, what)
