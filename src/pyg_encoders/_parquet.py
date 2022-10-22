@@ -8,16 +8,35 @@ import pandas as pd
 import numpy as np
 import jsonpickle as jp
 from pyg_base._bitemporal import _series, _asof
-
+import os
 
 __all__ = ['pd_to_parquet', 'pd_read_parquet']
 
 
 
-def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
+def pd_to_parquet(value, path, compression = 'GZIP', asof = None, existing_data = 'shift'):
     """
     a small utility to save df to parquet, extending both pd.Series and non-string columns    
 
+    Parameters
+    -----------
+    value: dataframe/series
+        value to be saved to file
+    
+    path: str
+        file location
+    
+    compression: str
+        compression type
+    
+    asof:
+        if not none, will convert value into a bitemporal dataframe using asof
+    existing_data:
+        policy for handling existing data if value is bitemporal.
+        'overwrite/ignore': overwrite existing data
+        0/False: ignore if not bitemporal itself, otherwise bi_merge
+        
+    
     :Example:
     -------
     >>> from pyg_base import *
@@ -61,16 +80,21 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None):
     elif is_df(value):
         if _asof in value.columns:
             old = try_none(_read_parquet)(path)
-            value = bi_merge(old, value)
+            value = bi_merge(old, value, asof = asof, first_asof=first_asof)
         mkdir(path)
         df = value.copy()
-        df.columns = [jp.dumps(col) for col in df.columns]
-        df.to_parquet(path, compression  = compression)
+        try:
+            df.to_parquet(path, compression  = compression)
+        except Exception:            
+            df.columns = [jp.dumps(col) for col in df.columns]
+            df.to_parquet(path, compression  = compression)
         return path
     else:
         return value        
 
 def _read_parquet(path):
+    if not os.path.exists(path):
+        return
     try:
         df = pd.read_parquet(path)
     except Exception:

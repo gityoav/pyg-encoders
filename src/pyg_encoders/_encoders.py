@@ -112,15 +112,42 @@ def _pickle_raw(path):
     return df
 
 
-def pickle_dump(value, path, asof = None):
+def pickle_dump(value, path, asof = None, existing_data = 'shift'):
+    """
+    saves a value as a pickle file
+    
+    Parameters
+    ----------
+    value: dict/dataframe
+        value to be saved
+    
+    asof:
+        set to a value if you want value to be converted to a bitemporal dataframe
+
+    existing_data:
+        if value is bitemporal, we need a policy how to handle existing data.
+        Further, existing data can be non bitemporal too. 
+            
+        'overwrite': overwrite existing
+        False / None: ignore non-bitemporal data, bi_merge if bitemporal 
+        other: apply bitemporal conversion to non-bitemporal data and then bi_merge
+        
+    """
     if '@' in path:
         path, asof = path.split('@')
     mkdir(path)
     if asof is not None:
         value = Bi(value, asof)
     if is_bi(value):
-        old  = try_none(_pickle_raw)(path)
-        value = bi_merge(old, value)
+        if existing_data in ('ignore', 'overwrite'):
+            pass
+        else:            
+            old  = try_none(_pickle_raw)(path)
+            if old is not None:
+                if not is_bi(old) and existing_data:
+                    old = Bi(old, existing_data)
+                if is_bi(old):            
+                    value = bi_merge(old, value)
     if hasattr(value, 'to_pickle'):
         value.to_pickle(path) # use object specific implementation if available
     else:
