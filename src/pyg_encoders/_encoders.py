@@ -5,7 +5,6 @@ from pyg_encoders._encode import encode, decode
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
-from pyg_base._bitemporal import _asof
 from functools import partial
 import pickle
 

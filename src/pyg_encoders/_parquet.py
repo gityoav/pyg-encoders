@@ -7,7 +7,7 @@ from pyg_base import try_none, bi_read, is_bi, bi_merge, Bi
 import pandas as pd
 import numpy as np
 import jsonpickle as jp
-from pyg_base._bitemporal import _series, _asof
+from pyg_base._bitemporal import _series
 import os
 
 __all__ = ['pd_to_parquet', 'pd_read_parquet']
@@ -78,9 +78,9 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None, existing_data 
             df.to_parquet(path, compression = compression)
         return path
     elif is_df(value):
-        if _asof in value.columns:
+        if is_bi(value):
             old = try_none(_read_parquet)(path)
-            value = bi_merge(old, value, asof = asof, first_asof=first_asof)
+            value = bi_merge(old_data = old, new_data = value, asof = asof, existing_data = existing_data)
         mkdir(path)
         df = value.copy()
         try:
@@ -105,7 +105,8 @@ def _read_parquet(path):
     except Exception:
         pass
     return df
-    
+
+
 def pd_read_parquet(path, asof = None, what = 'last', **kwargs):
     """
     a small utility to read df/series from parquet, extending both pd.Series and non-string columns 
