@@ -1,7 +1,6 @@
 from pyg_encoders._encoders import csv_write, parquet_write, npy_write, pickle_write, _csv, _npy, _npa, _parquet, _pickle, root_path
 from pyg_encoders._encode import encode, decode 
-from pyg_base import passthru, is_str, as_list, get_cache, dt, getargspec
-from functools import partial
+from pyg_base import passthru, is_str, as_list, get_cache, dt, getargspec, partialize
 
 
 _WRITERS = 'WRITERS'
@@ -10,8 +9,8 @@ if _WRITERS not in get_cache():
     
 WRITERS = get_cache()[_WRITERS]
 WRITERS.update({_csv: csv_write , 
-               _npy: partial(npy_write, append = False), 
-               _npa: partial(npy_write, append = True), 
+               _npy: partialize(npy_write, append = False), 
+               _npa: partialize(npy_write, append = True), 
                _parquet: parquet_write, 
                _pickle : pickle_write})
 
@@ -28,7 +27,7 @@ def as_reader(reader = None):
     else:
         return [reader]
 
-def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = None, asof = None):
+def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = None, asof = None, **writer_kwargs):
     """
     returns a list of functions that convert a document into an object that can be pushed into the storage mechanism we want
 
@@ -43,6 +42,8 @@ def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = N
         inputs into the 'encode' function, allowing us to not-encode some of the values in document based on their type
     unchanged_keys : str/list of str, optional
         inputs into the 'encode' function, allowing us to not-encode some of the keys in document 
+    writer_kwargs:
+        parameters specific to the writer we load, which we don't know in advance
 
     Raises
     ------
@@ -56,8 +57,8 @@ def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = N
 
     """
     if isinstance(writer, list):
-        return sum([as_writer(w) for w in writer], [])
-    e = encode if unchanged is None and unchanged_keys is None else partial(encode, unchanged = unchanged, unchanged_keys = unchanged_keys)
+        return sum([as_writer(w, kwargs = kwargs, unchanged = unchanged, unchanged_keys=unchanged_keys, asof = asof) for w in writer], [])
+    e = encode if unchanged is None and unchanged_keys is None else partialize(encode, unchanged = unchanged, unchanged_keys = unchanged_keys)
     if writer is None or writer is True or writer == ():
         return [e]
     elif writer is False or writer == 0:
@@ -70,11 +71,11 @@ def as_writer(writer = None, kwargs = None, unchanged = None, unchanged_keys = N
             if writer.lower().endswith(ext):
                 root = writer[:-len(ext)]                    
                 if len(root)>0:
-                    if kwargs:
+                    if kwargs and isinstance(kwargs, dict):
                         root = root_path(kwargs, root)
-                    return [partial(w, root = root, asof = asof), e] if asof and ('asof' in getargspec(w).args) else [partial(w, root = root), e]
+                    return [partialize(w, root = root, asof = asof, **writer_kwargs), e]
                 else:
-                    return [partial(w, asof = asof), e] if asof and ('asof' in getargspec(w).args) else [w,e]
+                    return [partialize(w, asof = asof, **writer_kwargs), e]
         err = 'Could not convert "%s" into a valid writer.\nAt the moment we support these extenstions: \n%s'%(writer, '\n'.join('%s maps to %s'%(k,v) for k,v in WRITERS.items()))
         err += '\nWriter should look like "d:/archive/%country/%city/results.parquet"'
         raise ValueError(err)

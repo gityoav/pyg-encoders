@@ -362,6 +362,27 @@ def csv_encode(value, path, asof = None):
         return value
 
 def cell_root(doc, root = None):
+    """
+    finds a root parameter within a document. 
+
+    Priorities are:
+        1) if 'root' is in doc.db, we return it
+        2) if 'root' is in doc.root, we return it
+        3) return the original root
+
+    Parameters:
+    ----------
+    doc : dict
+        A document, such as a cell.
+    root : str, optional
+        The generic root location to save the document in.
+
+    Returns:
+    -------
+    root : str
+        The root location to save the document in.
+
+    """
     if _root in doc:
         root  = doc[_root]
     if root is None and _db in doc and isinstance(doc[_db], partial):
@@ -371,6 +392,7 @@ def cell_root(doc, root = None):
         elif _writer in keywords:
             root = keywords[_writer]
     return root
+
 
 def npy_write(doc, root = None, append = True, asof = None):
     """
