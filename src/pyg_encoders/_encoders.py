@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
-from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt
+from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
 from functools import partial
@@ -236,8 +236,14 @@ def pickle_encode(value, path, asof = None):
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([pickle_encode(v, '%s/%i'%(path,i), asof) for i, v in enumerate(value)])
-    else:
+    elif is_primitive(value) or is_jsonable(value):
         return value
+    else:
+        path = root_path_check(path)
+        path = path if path.endswith(_pickle) else path + _pickle
+        path = pickle_dump(value, path = path)
+        return dict(_obj = _pickle_load, path = path)
+        
 
 pd_to_parquet_twice = try_value(pd_to_parquet, repeat = 2, sleep = 1, return_value = False)
 
@@ -436,10 +442,13 @@ def pickle_write(doc, root = None, asof = None):
 
     Therefore, the doc encode will cycle through the elements in the doc. Each time it sees a pd.DataFrame/pd.Series, it will 
     - determine where to write it (with the help of the doc)
-    - save it to a .parquet file
+    - save it to a .pickle file
+    
+    Also, if the object is not json-serializable, will pickle it as well.
 
-    >>> from pyg_base import *
-    >>> from pyg_mongo import * 
+    Example
+    -------
+    >>> from pyg import *
     >>> db = mongo_table(db = 'temp', table = 'temp', pk = 'key', writer = 'c:/temp/%key.pickle')         
     >>> a = pd.DataFrame(dict(a = [1,2,3], b= [4,5,6]), index = drange(2)); b = pd.DataFrame(np.random.normal(0,1,(3,2)), columns = ['a','b'], index = drange(2))
     >>> doc = dict(a = a, b = b, c = add_(a,b), key = 'b')
