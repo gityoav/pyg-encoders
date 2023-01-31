@@ -22,19 +22,6 @@ _writer = 'writer'
 __all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load', 'dictable_decode']
 
 
-# def encode(value):
-#     """
-#     encoder is similar to pyg_base.encoder with the only exception being that bson.objectid.ObjectId used by mongodb to generate the document _id, are not encoded
-
-#     Parameters
-#     ----------
-#     value : value/document to be encoded
-
-#     Returns
-#     -------
-#     encoded value/document
-#     """
-#     return encode_(value, ObjectId)
 
 def root_path(doc, root, fmt = None, **kwargs):
     """
@@ -236,14 +223,16 @@ def pickle_encode(value, path, asof = None):
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([pickle_encode(v, '%s/%i'%(path,i), asof) for i, v in enumerate(value)])
-    elif is_primitive(value) or is_jsonable(value):
+    elif is_primitive(value) or callable(value) or is_jsonable(value):
         return value
     else:
-        path = root_path_check(path)
-        path = path if path.endswith(_pickle) else path + _pickle
-        path = pickle_dump(value, path = path)
-        return dict(_obj = _pickle_load, path = path)
-        
+        try:
+            path = root_path_check(path)
+            path = path if path.endswith(_pickle) else path + _pickle
+            path = pickle_dump(value, path = path)
+            return dict(_obj = _pickle_load, path = path)
+        except pickle.PicklingError:
+            return value
 
 pd_to_parquet_twice = try_value(pd_to_parquet, repeat = 2, sleep = 1, return_value = False)
 
