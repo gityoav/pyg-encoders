@@ -223,7 +223,7 @@ def pickle_encode(value, path, asof = None):
         return res
     elif isinstance(value, (list, tuple)):
         return type(value)([pickle_encode(v, '%s/%i'%(path,i), asof) for i, v in enumerate(value)])
-    elif is_primitive(value) or callable(value) or is_jsonable(value):
+    elif is_date(value) or is_primitive(value) or callable(value) or is_jsonable(value):
         return value
     else:
         try:
