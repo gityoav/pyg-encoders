@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
+from pyg_encoders._threads import executor_pool
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
@@ -98,7 +99,29 @@ def _pickle_raw(path):
     return df
 
 
-def pickle_dump(value, path, asof = None, existing_data = 'shift'):
+def _pickle_dump(value, path, asof = None, existing_data = 'shift'):
+    mkdir(path)
+    if asof is not None:
+        value = Bi(value, asof)
+    if is_bi(value):
+        if existing_data in ('ignore', 'overwrite'):
+            pass
+        else:            
+            old  = try_none(_pickle_raw)(path)
+            if old is not None:
+                if not is_bi(old) and existing_data:
+                    old = Bi(old, existing_data)
+                if is_bi(old):            
+                    value = bi_merge(old, value)
+    if hasattr(value, 'to_pickle'):
+        value.to_pickle(path) # use object specific implementation if available
+    else:
+        with open(path, 'wb') as f:
+            pickle.dump(value, f)
+    
+
+
+def pickle_dump(value, path, asof = None, existing_data = 'shift', max_workers = 4, pool_name = None):
     """
     saves a value as a pickle file
     
@@ -118,27 +141,26 @@ def pickle_dump(value, path, asof = None, existing_data = 'shift'):
         False / None: ignore non-bitemporal data, bi_merge if bitemporal 
         other: apply bitemporal conversion to non-bitemporal data and then bi_merge
         
+    max_workers: int
+        if 0 then we save to file immediately prior to continuing.
+        if 1 or more, then we grab the pool and submit the write job. This allows I/O operations not to affect execution times
+        
+    Example
+    -------
+    >>> from pyg import * 
+    >>> value = pd.DataFrame(np.random.normal(0,1,(10000,10)), drange(-9999))
+    >>> path = 'c:/temp/pickle_dump_test.pickle'
+    >>> pooled_execution = timer(pickle_dump, n = 1000, time = True)(value, path, max_workers = 4)
+    >>> sequential_execution = timer(pickle_dump, n = 1000, time = True)(value, path, max_workers = 0)
+    >>> assert sequential_execution > 5 * pooled_execution   
+        
     """
     if '@' in path:
         path, asof = path.split('@')
-    mkdir(path)
-    if asof is not None:
-        value = Bi(value, asof)
-    if is_bi(value):
-        if existing_data in ('ignore', 'overwrite'):
-            pass
-        else:            
-            old  = try_none(_pickle_raw)(path)
-            if old is not None:
-                if not is_bi(old) and existing_data:
-                    old = Bi(old, existing_data)
-                if is_bi(old):            
-                    value = bi_merge(old, value)
-    if hasattr(value, 'to_pickle'):
-        value.to_pickle(path) # use object specific implementation if available
-    else:
-        with open(path, 'wb') as f:
-            pickle.dump(value, f)
+    if max_workers == 0: ## do immediately
+        _pickle_dump(value = value, path = path, asof = asof, existing_data = existing_data)
+    else: ## submit as a job
+        executor_pool(max_workers, pool_name).submit(_pickle_dump, value, path, asof, existing_data)
     return path
 
 
@@ -191,7 +213,7 @@ _np_load = encode(np.load)
 _dictable_decode = encode(dictable_decode)
 
 
-def pickle_encode(value, path, asof = None):
+def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject of multiple pickled files that can be decoded
     """
@@ -204,7 +226,7 @@ def pickle_encode(value, path, asof = None):
     if is_pd(value):
         path = root_path_check(path)
         path = path if path.endswith(_pickle) else path + _pickle
-        path = pickle_dump(value, path = path, asof = asof)
+        path = pickle_dump(value, path = path, asof = asof, max_workers = max_workers, pool_name = pool_name)
         if asof is None:
             return dict(_obj = _pickle_load, path = path)
         else:
@@ -215,29 +237,30 @@ def pickle_encode(value, path, asof = None):
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
-        res = type(value)(**{k : pickle_encode(v, '%s/%s'%(path,k), asof) for k, v in value.items()})
+        res = type(value)(**{k : pickle_encode(v, path = '%s/%s'%(path,k), asof = asof, max_workers = max_workers, pool_name = pool_name) for k, v in value.items()})
         if isinstance(value, dictable):
             return dict(_obj = _dictable_decode,
                         df = dict(_obj = _pickle_load, 
-                                  path = pickle_dump(res, path if path.endswith(_dictable) else path + _dictable)))
+                                  path = pickle_dump(res, path if path.endswith(_dictable) else path + _dictable, max_workers = max_workers, pool_name = pool_name)))
         return res
     elif isinstance(value, (list, tuple)):
-        return type(value)([pickle_encode(v, '%s/%i'%(path,i), asof) for i, v in enumerate(value)])
+        return type(value)([pickle_encode(v, path = '%s/%i'%(path,i), asof = asof, max_workers = max_workers, pool_name = pool_name) for i, v in enumerate(value)])
     elif is_date(value) or is_primitive(value) or callable(value) or is_jsonable(value):
         return value
     else:
         try:
             path = root_path_check(path)
             path = path if path.endswith(_pickle) else path + _pickle
-            path = pickle_dump(value, path = path)
+            path = pickle_dump(value, path = path, max_workers=max_workers, pool_name = pool_name)
             return dict(_obj = _pickle_load, path = path)
         except pickle.PicklingError:
             return value
 
+
 pd_to_parquet_twice = try_value(pd_to_parquet, repeat = 2, sleep = 1, return_value = False)
 
 
-def parquet_encode(value, path, compression = 'GZIP', asof = None):
+def parquet_encode(value, path, compression = 'GZIP', asof = None, max_workers = 4, pool_name = None):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded
 
@@ -246,9 +269,8 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None):
     >>> value = dict(key = 'a', n = np.random.normal(0,1, 10), data = dictable(a = [pd.Series([1,2,3]), pd.Series([4,5,6])], b = [1,2]), other = dict(df = pd.DataFrame(dict(a=[1,2,3], b= [4,5,6]))))
     >>> encoded = parquet_encode(value, path)
     >>> assert encoded['n']['file'] == 'c:/temp/n.npy'
-    >>> assert encoded['data'].a[0]['path'] == 'c:/temp/data/a/0.parquet'
+    >>> assert eq(decode(encoded['data']), value['data'])
     >>> assert encoded['other']['df']['path'] == 'c:/temp/other/df.parquet'
-
     >>> decoded = decode(encoded)
     >>> assert eq(decoded, value)
 
@@ -261,7 +283,7 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        path = pd_to_parquet_twice(value, path + _parquet, asof = asof)
+        path = pd_to_parquet_twice(value, path + _parquet, asof = asof, max_workers = max_workers, pool_name = pool_name)
         if asof is None:
             return dict(_obj = _pd_read_parquet, path = path)
         else:
@@ -272,19 +294,36 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None):
         np.save(path + _npy, value)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
-        res = type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression, asof = asof) for k, v in value.items()})
+        res = type(value)(**{k : parquet_encode(v, '%s/%s'%(path,k), compression, asof = asof, max_workers = max_workers, pool_name = pool_name) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
             return dict(_obj = _dictable_decode,
                         df = dict(_obj = _pd_read_parquet, 
-                                  path = pd_to_parquet_twice(df, path + _dictable)))
+                                  path = pd_to_parquet_twice(df, path + _dictable, max_workers = max_workers, pool_name = pool_name)))
         return res
     elif isinstance(value, (list, tuple)):
-        return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression, asof = asof) for i, v in enumerate(value)])
+        return type(value)([parquet_encode(v, '%s/%i'%(path,i), compression, asof = asof, max_workers = max_workers, pool_name = pool_name) for i, v in enumerate(value)])
     else:
         return value
+
+def _pd_to_npy(value, path, mode = 'w', check = True, max_workers = 4, pool_name = None):
+    if max_workers == 0:
+        pd_to_npy(value, path, mode = mode, check = check)
+    else:
+        executor_pool(max_workers, pool_name).submit(pd_to_npy, value, path, mode, check)        
+    return path
+
+
+def _np_save(path, value, mode = 'w', max_workers = 4, pool_name = None):
+    if max_workers == 0:
+        np_save(path = path, value = value, mode = mode)
+    else:
+        executor_pool(max_workers, pool_name).submit(np_save, path, value, mode)        
+    return path
     
-def npy_encode(value, path, append = False):
+
+
+def npy_encode(value, path, append = False, max_workers = 4, pool_name = None):
     """
     >>> from pyg_base import * 
     >>> value = pd.Series([1,2,3,4], drange(-3))
@@ -297,23 +336,23 @@ def npy_encode(value, path, append = False):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        res = pd_to_npy(value, path, mode = mode)
+        res = _pd_to_npy(value, path, mode = mode, max_workers=max_workers, pool_name=pool_name)
         res[_obj] = _pd_read_npy
         return res
     elif is_arr(value):
         path = root_path_check(path)
         fname = path + _npy 
-        np_save(fname, value, mode = mode)
+        _np_save(fname, value, mode = mode, max_workers=max_workers, pool_name=pool_name)
         return dict(_obj = _np_load, file = fname)        
     elif is_dict(value):
-        res = type(value)(**{k : npy_encode(v, '%s/%s'%(path,k), append = append) for k, v in value.items()})
+        res = type(value)(**{k : npy_encode(v, '%s/%s'%(path,k), append = append, max_workers=max_workers, pool_name=pool_name) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
             return dict(_obj = _dictable_decode,
-                        df = dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(df, path + _dictable)))
+                        df = dict(_obj = _pd_read_parquet, path = pd_to_parquet_twice(df, path + _dictable, max_workers=max_workers, pool_name=pool_name)))
         return res
     elif isinstance(value, (list, tuple)):
-        return type(value)([npy_encode(v, '%s/%i'%(path,i), append = append) for i, v in enumerate(value)])
+        return type(value)([npy_encode(v, '%s/%i'%(path,i), append = append, max_workers=max_workers, pool_name=pool_name) for i, v in enumerate(value)])
     else:
         return value
     
@@ -389,7 +428,7 @@ def cell_root(doc, root = None):
     return root
 
 
-def npy_write(doc, root = None, append = True, asof = None):
+def npy_write(doc, root = None, append = True, asof = None, max_workers = 4, pool_name = None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -415,11 +454,11 @@ def npy_write(doc, root = None, append = True, asof = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return npy_encode(doc, path, append = append)
+    return npy_encode(doc, path, append = append, max_workers=max_workers, pool_name=pool_name)
 
 
 
-def pickle_write(doc, root = None, asof = None):
+def pickle_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -448,10 +487,10 @@ def pickle_write(doc, root = None, asof = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return pickle_encode(doc, path, asof = asof)
+    return pickle_encode(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
 
 
-def parquet_write(doc, root = None, asof = None):
+def parquet_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -477,7 +516,7 @@ def parquet_write(doc, root = None, asof = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return parquet_encode(doc, path, asof = asof)
+    return parquet_encode(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
 
 def csv_write(doc, root = None, asof = None):
     """
