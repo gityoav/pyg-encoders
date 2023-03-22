@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 executors = {}
 
-def executor_pool(max_workers = 1, name = None):
+def executor_pool(max_workers = 4, name = None):
     """
     we want to have a pool of threads that we don't need to recreate all the times.
     We will use these to write to files rather than use the main threads
