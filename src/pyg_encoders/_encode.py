@@ -147,13 +147,13 @@ def _encode(value, unchanged = None, unchanged_keys = None):
     elif unchanged and isinstance(value, unchanged):
           return value
     elif isinstance(value, dictable):
-        res = {k : _encode(v) for k, v in value.items()}
+        res = {k : v if unchanged_keys and k in unchanged_keys else _encode(v, unchanged, unchanged_keys) for k, v in value.items()}
         if _obj not in res:
             res[_obj] = _encode(type(value))
         res['columns'] = value.columns
         return res    
     elif isinstance(value, cache_func) and hasattr(value, 'cache') and len(value.cache):
-        return _encode(cache(value.function))
+        return _encode(cache(value.function), unchanged, unchanged_keys)
     elif isinstance(value, dict):
         unchanged_keys = as_list(unchanged_keys)
         res = {k : v if unchanged_keys and k in unchanged_keys else _encode(v, unchanged, unchanged_keys) for k, v in value.items()}
@@ -172,9 +172,9 @@ def _encode(value, unchanged = None, unchanged_keys = None):
         else:
             return {_data : value.tobytes(), 'shape' : value.shape, 'dtype' : encode(value.dtype), _obj : _bson2np}
     elif isinstance(value, partial):
-        func = _encode(value.func)
-        args = _encode(value.args)
-        keywords = _encode(value.keywords)
+        func = _encode(value.func, unchanged, unchanged_keys)
+        args = _encode(value.args, unchanged, unchanged_keys)
+        keywords = _encode(value.keywords, unchanged, unchanged_keys)
         res = dict(_obj = _partial, func = func, args = args, keywords = keywords)
         return res
     else:
