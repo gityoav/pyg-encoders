@@ -205,12 +205,12 @@ def dictable_decode(df, loader = None):
 def dictable_decoded(path):
     return dictable_decode(path)
 
-_pd_read_csv = encode(pd_read_csv)
-_pd_read_parquet = encode(pd_read_parquet)
-_pd_read_npy = encode(pd_read_npy)
-_pickle_load = encode(pickle_load)
-_np_load = encode(np.load)
-_dictable_decode = encode(dictable_decode)
+_pd_read_csv = encode(try_none(pd_read_csv, verbose=True))
+_pd_read_parquet = encode(try_none(pd_read_parquet, verbose = True))
+_pd_read_npy = encode(try_none(pd_read_npy, verbose = True))
+_pickle_load = encode(try_none(pickle_load, verbose = True))
+_np_load = encode(try_none(np.load, verbose = True))
+_dictable_decode = encode(try_none(dictable_decode, verbose = True))
 
 
 def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None):
