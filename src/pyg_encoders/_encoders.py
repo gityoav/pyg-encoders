@@ -3,7 +3,7 @@ import numpy as np
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
 from pyg_encoders._threads import executor_pool
-from pyg_base import is_pd, is_dict, is_series, is_arr, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
+from pyg_base import is_pd, is_dict, is_series, is_arr, is_strs, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
 from functools import partial
@@ -53,14 +53,15 @@ def root_path(doc, root, fmt = None, **kwargs):
     items = sorted(tree_items(doc))[::-1]
     res = root
     for row in items:
-        text = '%(' + '.'.join(row[:-1]) + ')'
-        if text in root:
-            value = dt2str(row[-1], fmt).replace(':','') if is_date(row[-1]) else str(row[-1]).replace(':', '')
-            res = res.replace(text, '%s'% value)
-        text = '%' + '.'.join(row[:-1])
-        if text in root:
-            value = dt2str(row[-1], fmt).replace(':','') if is_date(row[-1]) else str(row[-1]).replace(':', '')
-            res = res.replace(text, '%s'% value)
+        if is_strs(row[:-1]):
+            text = '%(' + '.'.join(row[:-1]) + ')'
+            if text in root:
+                value = dt2str(row[-1], fmt).replace(':','') if is_date(row[-1]) else str(row[-1]).replace(':', '')
+                res = res.replace(text, '%s'% value)
+            text = '%' + '.'.join(row[:-1])
+            if text in root:
+                value = dt2str(row[-1], fmt).replace(':','') if is_date(row[-1]) else str(row[-1]).replace(':', '')
+                res = res.replace(text, '%s'% value)
     return res
 
 def root_path_check(path):
