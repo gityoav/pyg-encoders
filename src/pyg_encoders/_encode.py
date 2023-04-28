@@ -65,7 +65,7 @@ def _decode(value, date = None):
             obj = res.pop(_obj)
             if isinstance(obj, str): # we have been unable to convert to object
                 obj = json.loads(obj)
-            if isinstance(obj, dict): 
+            if isinstance(obj, dict) and not callable(obj): 
                 v = list(obj.values())[0]
                 try:
                     import pyg
