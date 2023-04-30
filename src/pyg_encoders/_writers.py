@@ -10,8 +10,11 @@ if _WRITERS not in get_cache():
 WRITERS = get_cache()[_WRITERS]
 WRITERS.update({_csv: csv_write , 
                _npy: partialize(npy_write, append = False), 
+               '.np0': partialize(npy_write, append = False, max_workers = 0), 
                _npa: partialize(npy_write, append = True), 
                _parquet: parquet_write, 
+               '.parque0' : partialize(parquet_write, max_workers = 0),
+               '.pickl0' : partialize(pickle_write, max_workers = 0),
                _pickle : pickle_write})
 
 def as_reader(reader = None):
