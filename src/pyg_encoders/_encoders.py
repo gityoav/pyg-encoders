@@ -186,7 +186,7 @@ def pd_read_csv(path, asof = None, what = 'last'):
         res = res.set_index('index')
     return res
 
-def dictable_decode(df, loader = None):
+def dictable_decode(df, loader = None, **_):
     """
     converts a dataframe with objects encoded into a dictable with decoded objects
     :Parameters:
