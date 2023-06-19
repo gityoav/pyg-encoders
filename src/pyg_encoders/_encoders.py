@@ -3,7 +3,7 @@ import numpy as np
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
 from pyg_encoders._threads import executor_pool
-from pyg_base import is_pd, is_dict, is_series, is_arr, is_strs, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
+from pyg_base import is_pd, is_dict, is_series, is_arr, is_str, is_int, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
 from functools import partial
@@ -23,6 +23,10 @@ _writer = 'writer'
 __all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load', 'dictable_decode']
 
 
+def _path_str(value, fmt = None):
+    value = dt2str(value, fmt) if is_date(value) else str(value)
+    value = value.replace('%', '').replace(':','') ## need to replace this to disallow a value containing a path to another key
+    return value    
 
 def root_path(doc, root, fmt = None, **kwargs):
     """
@@ -53,15 +57,15 @@ def root_path(doc, root, fmt = None, **kwargs):
     items = sorted(tree_items(doc))[::-1]
     res = root
     for row in items:
-        if is_strs(row[:-1]):
-            text = '%(' + '.'.join(row[:-1]) + ')'
-            if text in root:
-                value = dt2str(row[-1], fmt).replace(':','') if is_date(row[-1]) else str(row[-1]).replace(':', '')
-                res = res.replace(text, '%s'% value)
-            text = '%' + '.'.join(row[:-1])
-            if text in root:
-                value = dt2str(row[-1], fmt).replace(':','') if is_date(row[-1]) else str(row[-1]).replace(':', '')
-                res = res.replace(text, '%s'% value)
+        keys = row[:-1]
+        if min([is_str(key) or is_int(key) for key in keys]):
+            key = '.'.join([str(k) for k in keys])
+            value = row[-1]
+            for text in ['%('+key+')', '%' + key]:
+                if text in root:
+                    value = _path_str(value, fmt)
+                    res = res.replace(text, value)
+    ## we do not root_path_check here so as to allow partial replacement
     return res
 
 def root_path_check(path):
