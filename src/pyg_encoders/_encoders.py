@@ -342,8 +342,7 @@ def npy_encode(value, path, append = False, max_workers = 4, pool_name = None):
     if is_pd(value):
         path = root_path_check(path)
         res = _pd_to_npy(value, path, mode = mode, max_workers=max_workers, pool_name=pool_name)
-        res[_obj] = _pd_read_npy
-        return res
+        return {_obj: _pd_read_npy, 'path': res}
     elif is_arr(value):
         path = root_path_check(path)
         fname = path + _npy 
