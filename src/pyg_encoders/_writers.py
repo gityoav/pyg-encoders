@@ -186,7 +186,7 @@ def pd_read_root(root, doc = None, output = None, level = 0):
     ext = '.' + root.split('.')[-1]
     path = path[:-len(ext)]
     for out in output:
-        if out not in doc:
+        if doc.get(out) is None:
             pth = os.path.join(path, out)
             res[out] = _pd_read_path(pth, ext, level)
     return res / None
