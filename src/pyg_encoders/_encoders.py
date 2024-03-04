@@ -577,7 +577,7 @@ def parquet_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
     path = root_path(doc, root)
     return parquet_encode(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
 
-def csv_write(doc, root = None, asof = None):
+def csv_write(doc, root = None, asof = None, **pandas_params):
     """
     MongoDB is great for manipulating/searching dict keys/values. 
     However, the actual dataframes in each doc, we may want to save in a file system. 
@@ -596,6 +596,6 @@ def csv_write(doc, root = None, asof = None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return csv_encode(doc, path, asof = asof)
+    return csv_encode(doc, path, asof = asof, **pandas_params)
 
 
