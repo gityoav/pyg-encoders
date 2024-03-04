@@ -5,7 +5,7 @@ from pyg_encoders._encode import encode, decode
 from pyg_encoders._threads import executor_pool
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_str, is_int, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
 from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
-from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none
+from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none, dictable
 from functools import partial
 import pickle
 
@@ -73,25 +73,69 @@ def root_path_check(path):
         raise ValueError('The document did not contain enough keys to determine the path %s'%path)
     return path
 
-def pd_to_csv(value, path, asof = None):
+def pd_to_csv(value, path, asof = None, **pandas_params):
     """
     A small utility to write both pd.Series and pd.DataFrame to csv files
+    
+    :parameters:
+    ------------
+    value: pd.DataFrame/pd.Series 
+        value to be saved
+    path: path_or_buf
+        location to save file
+    asof: datetime
+        if value is a bitemporal, allows you to write the dataframe as seen on a specific date.
+    pandas_params: 
+        formatting parameters in pd.DataFrame.to_csv
+        
+    :example:
+    ---------
+    >>> from pyg import *
+    >>> rs = dictable(a = [1,2,3], b = 'hi')
+    >>> path = pd_to_csv(rs, 'c:/temp/rs')
+    >>> pd.read_csv(path)
+
+        index  a   b
+     0      0  1  hi
+     1      1  2  hi
+     2      2  3  hi
+
+    >>> path = pd_to_csv(rs, 'c:/temp/rs', index = False)
+    >>> pd.read_csv(path)
+
+       a   b
+    0  1  hi
+    1  2  hi
+    2  3  hi
+    
+    >>> path = pd_to_csv(rs, 'c:/temp/rs', index_label = 'idx')
+    >>> pd.read_csv(path)
+        idx  a   b
+     0    0  1  hi
+     1    1  2  hi
+     2    2  3  hi
+    
+    
     """    
     if '@' in path:
         path, asof = path.split('@')    
     if asof is not None:
         value = Bi(value, asof)
+    if isinstance(value, dictable):
+        value = pd.DataFrame(value)
+    if isinstance(value, dict):
+        value = pd.Series(value)
     if is_series(value):
         value.index.name = _series
     if value.index.name is None:
-        value.index.name = 'index'
+        value.index.name = pandas_params.get('index_label', 'index')
     if path[-4:].lower()!=_csv:
         path = path + _csv
     mkdir(path)
     if is_bi(value):
         old = try_none(pd_read_csv)(path)
         value = bi_merge(old, value)
-    value.to_csv(path)
+    value.to_csv(path, **pandas_params)
     return path
 
 
@@ -361,10 +405,19 @@ def npy_encode(value, path, append = False, max_workers = 4, pool_name = None):
         return value
     
 
-def csv_encode(value, path, asof = None):
+def csv_encode(value, path, asof = None, **pandas_params):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject that can be decoded while saving dataframes into csv
+
+    :parameters:
+    -----------
+    value: pd.DataFrame/pd.Series/dictable
+    path: pandas' path_or_buf 
+    asof: datetime: if value is a bitemporal dataframe, will allow to save the data as seen in a given date.
+    pandas_params: parameters of pandas.to_csv, such as index = False controlling the output
     
+    :example:
+    ---------
     >>> path = 'c:/temp'
     >>> value = dict(key = 'a', data = dictable(a = [pd.Series([1,2,3]), pd.Series([4,5,6])], b = [1,2]), other = dict(df = pd.DataFrame(dict(a=[1,2,3], b= [4,5,6]))))
     >>> encoded = csv_encode(value, path)
@@ -373,6 +426,8 @@ def csv_encode(value, path, asof = None):
 
     >>> decoded = decode(encoded)
     >>> assert eq(decoded, value)
+    
+    
     """
     if '@' in path:
         path, asof = path.split('@')
@@ -382,20 +437,20 @@ def csv_encode(value, path, asof = None):
         path = path[:-1]
     if is_pd(value):
         path = root_path_check(path)
-        path = pd_to_csv(value, path, asof = asof)
+        path = pd_to_csv(value, path, asof = asof, **pandas_params)
         if asof is None:
             return dict(_obj = _pd_read_csv, path = path)
         else:
             return dict(_obj = _pd_read_csv, path = path, asof = dt())
     elif is_dict(value):
-        res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k)) for k, v in value.items()})
+        res = type(value)(**{k : csv_encode(v, '%s/%s'%(path,k), **pandas_params) for k, v in value.items()})
         if isinstance(value, dictable):
             df = pd.DataFrame(res)
             return dict(_obj = _dictable_decode, 
-                        df = dict(_obj = _pd_read_csv, path = pd_to_csv(df, path)))
+                        df = dict(_obj = _pd_read_csv, path = pd_to_csv(df, path, **pandas_params)))
         return res
     elif isinstance(value, (list, tuple)):
-        return type(value)([csv_encode(v, '%s/%i'%(path,i)) for i, v in enumerate(value)])
+        return type(value)([csv_encode(v, '%s/%i'%(path,i), **pandas_params) for i, v in enumerate(value)])
     else:
         return value
 

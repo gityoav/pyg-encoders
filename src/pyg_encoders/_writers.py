@@ -25,7 +25,6 @@ WRITERS.update({_csv: csv_write ,
 
 READERS.update({_csv: pd_read_csv,
                 _pickle: pickle_load, 
-                _csv: pd_read_csv, 
                 _npy : pd_read_npy, 
                 _npa: pd_read_npy,
                 _parquet: pd_read_parquet
