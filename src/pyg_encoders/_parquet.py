@@ -4,6 +4,7 @@ from pyg_base._dates import dt2str, dt
 from pyg_base._logger import logger
 from pyg_base._as_list import as_list
 from pyg_base import try_none, bi_read, is_bi, bi_merge, Bi
+from pyg_encoders._locks import _locked_to_parquet, _locked_read_parquet
 from pyg_encoders._threads import executor_pool
 import pandas as pd
 import numpy as np
@@ -19,25 +20,14 @@ def _pd_to_parquet(value, path, compression = 'GZIP', asof = None, existing_data
         mkdir(path)
         df = pd.DataFrame(value)
         df.columns = [_series]
-        try:
-            df.to_parquet(path, compression = compression)
-        except ValueError:
-            df = pd.DataFrame({jp.dumps(k) : [v] for k,v in dict(value).items()})
-            df[_series] = True
-            df.to_parquet(path, compression = compression)
-        return path
+        return _locked_to_parquet(df, path)
     elif is_df(value):
         if is_bi(value):
             old = try_none(_read_parquet)(path)
             value = bi_merge(old_data = old, new_data = value, asof = asof, existing_data = existing_data)
         mkdir(path)
-        df = value.copy()
-        try:
-            df.to_parquet(path, compression  = compression)
-        except Exception:            
-            df.columns = [jp.dumps(col) for col in df.columns]
-            df.to_parquet(path, compression  = compression)
-        return path
+        return _locked_to_parquet(df, path)
+
 
 
 
@@ -112,12 +102,11 @@ def pd_to_parquet(value, path, compression = 'GZIP', asof = None, existing_data 
     return path
 
 
-
 def _read_parquet(path):
     if not os.path.exists(path):
         return
     try:
-        df = pd.read_parquet(path)
+        df = _locked_read_parquet(path)
     except Exception:
         logger.warning('WARN: unable to read pd.read_parquet("%s")'%path)
         return None
