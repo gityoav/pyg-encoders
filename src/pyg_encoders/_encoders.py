@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
-from pyg_encoders._locks import _locked_read_pickle, _locked_read_csv, _locked_to_csv, _locked_to_pickle, _locked_np_save
+from pyg_encoders._locks import _locked_read_pickle, _locked_read_csv, _locked_to_csv, _locked_to_pickle, _locked_np_save, _locked_pd_to_npy, _locked_pd_read_npy
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
 from pyg_encoders._threads import executor_pool
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_str, is_int, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
-from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
+from pyg_npy import mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none, dictable
 from functools import partial
 import pickle
@@ -253,7 +253,7 @@ def dictable_decoded(path):
 
 _pd_read_csv = encode(try_none(pd_read_csv, verbose=True))
 _pd_read_parquet = encode(try_none(pd_read_parquet, verbose = True))
-_pd_read_npy = encode(try_none(pd_read_npy, verbose = True))
+_pd_read_npy = encode(try_none(_locked_pd_read_npy, verbose = True))
 _pickle_load = encode(try_none(pickle_load, verbose = True))
 _np_load = encode(try_none(np.load, verbose = True))
 _dictable_decode = encode(try_none(dictable_decode, verbose = True))
@@ -354,17 +354,17 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None, max_workers =
 
 def _pd_to_npy(value, path, mode = 'w', check = True, max_workers = 4, pool_name = None):
     if max_workers == 0:
-        pd_to_npy(value, path, mode = mode, check = check)
+        _locked_pd_to_npy(value, path, mode = mode, check = check)
     else:
-        executor_pool(max_workers, pool_name).submit(pd_to_npy, value, path, mode, check)        
+        executor_pool(max_workers, pool_name).submit(_locked_pd_to_npy, value, path, mode, check)        
     return path
 
 
 def _np_save(path, value, mode = 'w', max_workers = 4, pool_name = None):
     if max_workers == 0:
-        np_save(path = path, value = value, mode = mode)
+        _locked_np_save(path = path, value = value, mode = mode)
     else:
-        executor_pool(max_workers, pool_name).submit(np_save, path, value, mode)        
+        executor_pool(max_workers, pool_name).submit(_locked_np_save, path, value, mode)        
     return path
     
 

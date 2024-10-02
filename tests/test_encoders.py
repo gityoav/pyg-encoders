@@ -1,5 +1,5 @@
-from pyg_base import eq, decode, dt, drange, encode, passthru
-from pyg_encoders import parquet_write, csv_write, npy_write, root_path, parquet_encode, csv_encode, as_writer, as_reader
+from pyg_base import eq, dt, drange, passthru
+from pyg_encoders import parquet_write, csv_write, npy_write, root_path, parquet_encode, csv_encode, as_writer, as_reader, encode, decode
 
 # import Dict, pd_read_parquet, parquet_write, mongo_table, dictable, eq, passthru, cell, drange, root_path, dt, parquet_encode, csv_encode
 import pandas as pd
@@ -30,8 +30,7 @@ def test_root_path():
 
     root = 'c:/%name/%surname/%age/'
     doc = dict(name = 'yoav', surname = 'git')
-    with pytest.raises(ValueError):
-        root_path(doc, root)
+    assert root_path(doc, root) == 'c:/yoav/git/%age/'
 
 
 def test_parquet_write():

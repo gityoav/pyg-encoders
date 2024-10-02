@@ -26,7 +26,7 @@ def _pd_to_parquet(value, path, compression = 'GZIP', asof = None, existing_data
             old = try_none(_read_parquet)(path)
             value = bi_merge(old_data = old, new_data = value, asof = asof, existing_data = existing_data)
         mkdir(path)
-        return _locked_to_parquet(df, path)
+        return _locked_to_parquet(value, path)
 
 
 
