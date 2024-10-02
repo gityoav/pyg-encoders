@@ -19,9 +19,9 @@ def _locked_to_csv(value, path, **params):
     return path
 
 
-def _locked_np_save(value, path, mode = 'w'):
+def _locked_np_save(value, path, allow_pickle = True, fix_imports = True):
     with _LOCKS[path]:
-        np_save(path = path, value = value, mode = mode)
+        np.save(file = path, arr = value, allow_pickle = allow_pickle, fix_imports = fix_imports)
     return path
 
 
