@@ -1,5 +1,6 @@
 from pyg_encoders._encoders import csv_write, parquet_write, npy_write, pickle_write, _csv, _npy, _npa, _parquet, _pickle, _dictable, root_path
-from pyg_encoders._encoders import pickle_load, pd_read_csv, pd_read_npy, pd_read_parquet
+from pyg_encoders._encoders import pickle_load, pd_read_csv, pd_read_parquet
+from pyg_encoders._locks import _locked_pd_read_npy
 from pyg_encoders._encode import encode, decode 
 from pyg_base import passthru, is_str, as_list, get_cache, dt, dictattr, getargspec, partialize, dictdir
 import os
@@ -25,8 +26,8 @@ WRITERS.update({_csv: csv_write ,
 
 READERS.update({_csv: pd_read_csv,
                 _pickle: pickle_load, 
-                _npy : pd_read_npy, 
-                _npa: pd_read_npy,
+                _npy : _locked_pd_read_npy, 
+                _npa: _locked_pd_read_npy,
                 _parquet: pd_read_parquet
                 })
 

@@ -1,10 +1,11 @@
 import pandas as pd
 import numpy as np
+from pyg_encoders._locks import _locked_read_pickle, _locked_read_csv, _locked_to_csv, _locked_to_pickle, _locked_np_save, _locked_pd_to_npy, _locked_pd_read_npy
 from pyg_encoders._parquet import pd_to_parquet, pd_read_parquet
 from pyg_encoders._encode import encode, decode
 from pyg_encoders._threads import executor_pool
 from pyg_base import is_pd, is_dict, is_series, is_arr, is_str, is_int, is_date, dt2str, tree_items, dictable, try_value, dt, is_jsonable, is_primitive
-from pyg_npy import pd_to_npy, np_save, pd_read_npy, mkdir
+from pyg_npy import mkdir
 from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none, dictable
 from functools import partial
 import pickle
@@ -21,6 +22,7 @@ _obj = '_obj'
 _writer = 'writer'
 
 __all__ = ['root_path', 'pd_to_csv', 'pd_read_csv', 'parquet_encode', 'parquet_write', 'csv_encode', 'csv_write', 'pickle_dump', 'pickle_load', 'dictable_decode']
+
 
 
 def _path_str(value, fmt = None):
@@ -135,18 +137,11 @@ def pd_to_csv(value, path, asof = None, **pandas_params):
     if is_bi(value):
         old = try_none(pd_read_csv)(path)
         value = bi_merge(old, value)
-    value.to_csv(path, **pandas_params)
+    _locked_to_csv(value = value, path = path, **pandas_params)
     return path
 
 
-def _pickle_raw(path):
-    try:
-        with open(path) as f:
-            df = pickle.load(f)
-    except Exception: #pandas read_pickle sometimes work when pickle.load fails
-        df = pd.read_pickle(path)
-    return df
-
+        
 
 def _pickle_dump(value, path, asof = None, existing_data = 'shift'):
     mkdir(path)
@@ -156,17 +151,15 @@ def _pickle_dump(value, path, asof = None, existing_data = 'shift'):
         if existing_data in ('ignore', 'overwrite'):
             pass
         else:            
-            old  = try_none(_pickle_raw)(path)
+            old  = try_none(_locked_read_pickle)(path)
             if old is not None:
                 if not is_bi(old) and existing_data:
                     old = Bi(old, existing_data)
                 if is_bi(old):            
                     value = bi_merge(old, value)
-    if hasattr(value, 'to_pickle'):
-        value.to_pickle(path) # use object specific implementation if available
-    else:
-        with open(path, 'wb') as f:
-            pickle.dump(value, f)
+    _locked_to_pickle(value, path)
+    return path
+
     
 
 
@@ -214,17 +207,18 @@ def pickle_dump(value, path, asof = None, existing_data = 'shift', max_workers =
 
 
 def pickle_load(path, asof = None, what = 'last'):
-    df = _pickle_raw(path)
+    df = _locked_read_pickle(path)
     if asof is not None:
         df = bi_read(df, asof, what)
     return df
             
 
+
 def pd_read_csv(path, asof = None, what = 'last'):
     """
     A small utility to read both pd.Series and pd.DataFrame from csv files
     """
-    res = pd.read_csv(path)
+    res = _locked_read_csv(path)
     if asof is not None:
         res = bi_read(res, asof, what)
     if res.columns[0] == _series and res.shape[1] == 2:
@@ -233,6 +227,7 @@ def pd_read_csv(path, asof = None, what = 'last'):
     if res.columns[0] == 'index':
         res = res.set_index('index')
     return res
+
 
 def dictable_decode(df, loader = None, **_):
     """
@@ -251,12 +246,14 @@ def dictable_decode(df, loader = None, **_):
     res = res.do(decode)
     return res
 
+
 def dictable_decoded(path):
     return dictable_decode(path)
 
+
 _pd_read_csv = encode(try_none(pd_read_csv, verbose=True))
 _pd_read_parquet = encode(try_none(pd_read_parquet, verbose = True))
-_pd_read_npy = encode(try_none(pd_read_npy, verbose = True))
+_pd_read_npy = encode(try_none(_locked_pd_read_npy, verbose = True))
 _pickle_load = encode(try_none(pickle_load, verbose = True))
 _np_load = encode(try_none(np.load, verbose = True))
 _dictable_decode = encode(try_none(dictable_decode, verbose = True))
@@ -283,7 +280,7 @@ def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None):
     elif is_arr(value):
         path = root_path_check(path)
         mkdir(path + _npy)
-        np.save(path + _npy, value)
+        _locked_np_save(value, path + _npy)
         return dict(_obj = _np_load, file = path + _npy)        
     elif is_dict(value):
         res = type(value)(**{k : pickle_encode(v, path = '%s/%s'%(path,k), asof = asof, max_workers = max_workers, pool_name = pool_name) for k, v in value.items()})
@@ -357,17 +354,17 @@ def parquet_encode(value, path, compression = 'GZIP', asof = None, max_workers =
 
 def _pd_to_npy(value, path, mode = 'w', check = True, max_workers = 4, pool_name = None):
     if max_workers == 0:
-        pd_to_npy(value, path, mode = mode, check = check)
+        _locked_pd_to_npy(value, path, mode = mode, check = check)
     else:
-        executor_pool(max_workers, pool_name).submit(pd_to_npy, value, path, mode, check)        
+        executor_pool(max_workers, pool_name).submit(_locked_pd_to_npy, value, path, mode, check)        
     return path
 
 
 def _np_save(path, value, mode = 'w', max_workers = 4, pool_name = None):
     if max_workers == 0:
-        np_save(path = path, value = value, mode = mode)
+        _locked_np_save(path = path, value = value, mode = mode)
     else:
-        executor_pool(max_workers, pool_name).submit(np_save, path, value, mode)        
+        executor_pool(max_workers, pool_name).submit(_locked_np_save, path, value, mode)        
     return path
     
 
