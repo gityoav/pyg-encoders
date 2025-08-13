@@ -137,7 +137,7 @@ def dump(value):
         res = ', '.join([dump(v) for v in value])
         return f'[{res}]'
     elif isinstance(value, dict):
-        res = ', '.join([f'{dump(k)}:{dump(v)}' for k,v in value.items()])
+        res = ', '.join([f'{dump(k)}:{dump(v)}' for k,v in sorted(value.items())])
         return '{' + res + '}'
     else:
         return str(value)          
