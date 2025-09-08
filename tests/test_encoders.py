@@ -1,5 +1,5 @@
 from pyg_base import eq, dt, drange, passthru
-from pyg_encoders import parquet_write, csv_write, npy_write, root_path, parquet_encode, csv_encode, as_writer, as_reader, encode, decode
+from pyg_encoders import parquet_write, csv_write, npy_write, root_path, parquet_encode, csv_encode, as_writer, as_reader, encode, decode, pickle_write, pickle_load
 
 # import Dict, pd_read_parquet, parquet_write, mongo_table, dictable, eq, passthru, cell, drange, root_path, dt, parquet_encode, csv_encode
 import pandas as pd
@@ -44,6 +44,7 @@ def test_csv_write():
     res = csv_write(doc, root)
     assert res['df']['path'] == 'c:/test/a/b/df.csv'
     assert isinstance(decode(res['df']).c.values[0], str) ## date columns are back as string from csv
+    assert eq(df.a, decode(res)['df'].a)
     assert eq(df.a, decode(res['df']).a)
     
 
@@ -65,3 +66,19 @@ def test_as_writer():
 def test_as_reader():
     assert as_reader(None) == [decode]
     assert as_reader(False) == [passthru]
+    
+def test_pickle_write():
+    root = 'c:/test/%key1/%key2.pickle'
+    df = pd.DataFrame(dict(a = [1.,np.nan,3], b = ['a', 'b', 'c'], c = drange(2)), index = drange(2))
+    s = pd.Series([1.,np.nan,3], drange(2))
+    doc = dict(df = df, s = s, key1 = 'a', key2 = 'b', x = dict(y = s * 2))    
+    res = pickle_write(doc, root)
+    assert eq(df.a, decode(res)['df'].a)
+    from pyg_cell import db_cell
+    from pyg_base import add_, eq
+    a = pd.Series([1,2,3,], drange(2))
+    b = pd.Series([4,5,6], drange(2))
+    self = db_cell(add_, a = a, b = b, key = 'c', db = 'c:/test/%key.pickle')()
+    self = db_cell(add_, a = a, b = b, key = 'c', db = 'c:/test/%key.pickle').load()
+    assert eq(self.data, a+b)
+    assert eq(pickle_load('c:/test/c.pickle')['data'], a+b)

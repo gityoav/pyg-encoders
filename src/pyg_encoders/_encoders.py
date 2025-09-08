@@ -10,6 +10,7 @@ from pyg_base import Bi, bi_merge, is_bi, bi_read, try_none, dictable
 from functools import partial
 import pickle
 
+
 _pickle = '.pickle'
 _parquet = '.parquet'
 _dictable = '.dictable'
@@ -269,6 +270,15 @@ def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None):
         path = path[:-len(_pickle)]
     if path.endswith('/'):
         path = path[:-1]
+    
+    path = path if path.endswith(_pickle) else path + _pickle
+    path = pickle_dump(value, path = path, asof = asof, max_workers = max_workers, pool_name = pool_name)
+    if asof is None:
+        return dict(_obj = _pickle_load, path = path)
+    else:
+        return dict(_obj = _pickle_load, path = path, asof = dt()) 
+    
+    
     if is_pd(value):
         path = root_path_check(path)
         path = path if path.endswith(_pickle) else path + _pickle
@@ -543,7 +553,7 @@ def pickle_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return pickle_dump(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
+    return pickle_encode(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
 
 
 def parquet_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
