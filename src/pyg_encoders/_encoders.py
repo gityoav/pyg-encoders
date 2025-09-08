@@ -543,7 +543,7 @@ def pickle_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
     if root is None:
         return doc
     path = root_path(doc, root)
-    return pickle_encode(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
+    return pickle_dump(doc, path, asof = asof, max_workers=max_workers, pool_name=pool_name)
 
 
 def parquet_write(doc, root = None, asof = None, max_workers=4, pool_name=None):
