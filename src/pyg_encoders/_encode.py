@@ -15,6 +15,10 @@ iso_quote = re.compile('^"[0-9]{4}-[0-9]{2}-[0-9]{2}T')
 
 __all__ = ['encode', 'decode', 'pd2bson', 'bson2pd', 'bson2np', 'dumps', 'loads']
 
+
+_safe_json_loads = try_back(json.loads)
+
+
 @try_back
 def decode_str(value):
     """
@@ -31,6 +35,9 @@ def decode_str(value):
         value decoded or original value if failed.
 
     """
+    res = _safe_json_loads(value)
+    if isinstance(res, str):
+        return res    
     res = jp.decode(value)
     if res is None and value!='null':
         logger.warning('could not decode value: %s'%value)

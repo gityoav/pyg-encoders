@@ -1,11 +1,26 @@
 from pyg_base import eq, dt, drange, passthru
-from pyg_encoders import parquet_write, csv_write, npy_write, root_path, parquet_encode, csv_encode, as_writer, as_reader, encode, decode, pickle_write, pickle_load
+from pyg_encoders import loads, dumps, dump, parquet_write, csv_write, npy_write, root_path, parquet_encode, csv_encode, as_writer, as_reader, encode, decode, pickle_write, pickle_load
+from pyg_encoders._encode import decode_str
 
 # import Dict, pd_read_parquet, parquet_write, mongo_table, dictable, eq, passthru, cell, drange, root_path, dt, parquet_encode, csv_encode
 import pandas as pd
 import numpy as np
 import pytest
 from functools import partial
+import json
+
+
+def test_decode_str():
+    DUMP = dict(ccy = 'USD', period = 'MONTHLY')
+    DUMPED = dump(DUMP)
+    assert DUMPED == '{ccy:USD, period:MONTHLY}'
+    assert decode_str(DUMPED) == DUMPED
+    assert decode_str('{"a": 1,"b": [1,2]}') == {'a': 1, 'b': [1, 2]}
+    assert decode(DUMPED) == DUMPED
+    assert loads(json.dumps({'options': DUMPED, 'x':1})) == dict(options = DUMPED, x = 1)
+    assert loads(dumps(dict(options=DUMPED))) == dict(options = DUMPED)
+
+
 
 df = pd.DataFrame(dict(a = [1.,np.nan,3], b = ['a', 'b', 'c'], c = drange(2)), index = drange(2))
 s = pd.Series([1.,np.nan,3], drange(2))
@@ -74,6 +89,14 @@ def test_pickle_write():
     doc = dict(df = df, s = s, key1 = 'a', key2 = 'b', x = dict(y = s * 2))    
     res = pickle_write(doc, root)
     assert eq(df.a, decode(res)['df'].a)
+    assert eq(df.a, decode(res['df']).a)
+
+    ## check that d is saved as a single item
+    doc = dict(df = df, s = s, d = dict(s = s, df = df), key1 = 'a', key2 = 'b', x = dict(y = s * 2))    
+    res = pickle_write(doc, root)
+    assert eq(s, decode(res)['d']['s'])
+    assert 's' not in res['d'] 
+
     from pyg_cell import db_cell
     from pyg_base import add_, eq
     a = pd.Series([1,2,3,], drange(2))
@@ -81,4 +104,4 @@ def test_pickle_write():
     self = db_cell(add_, a = a, b = b, key = 'c', db = 'c:/test/%key.pickle')()
     self = db_cell(add_, a = a, b = b, key = 'c', db = 'c:/test/%key.pickle').load()
     assert eq(self.data, a+b)
-    assert eq(pickle_load('c:/test/c.pickle')['data'], a+b)
+    assert eq(pickle_load('c:/test/c/data.pickle'), a+b)

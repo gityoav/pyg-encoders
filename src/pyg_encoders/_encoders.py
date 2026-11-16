@@ -260,7 +260,7 @@ _np_load = encode(try_none(np.load, verbose = True))
 _dictable_decode = encode(try_none(dictable_decode, verbose = True))
 
 
-def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None):
+def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None, subdir = 0):
     """
     encodes a single DataFrame or a document containing dataframes into a an abject of multiple pickled files that can be decoded
     """
@@ -271,13 +271,23 @@ def pickle_encode(value, path, asof = None, max_workers = 4, pool_name = None):
     if path.endswith('/'):
         path = path[:-1]
     
-    path = path if path.endswith(_pickle) else path + _pickle
-    path = pickle_dump(value, path = path, asof = asof, max_workers = max_workers, pool_name = pool_name)
-    if asof is None:
-        return dict(_obj = _pickle_load, path = path)
+
+    if is_dict(value) and subdir > 0:
+        res = type(value)(**{k : pickle_encode(v, path = '%s/%s'%(path,k), asof = asof, max_workers = max_workers, pool_name = pool_name, subdir = subdir - 1) for k, v in value.items()})
+        if isinstance(value, dictable):
+            return dict(_obj = _dictable_decode,
+                        df = dict(_obj = _pickle_load, 
+                                  path = pickle_dump(res, path if path.endswith(_dictable) else path + _dictable, max_workers = max_workers, pool_name = pool_name)))
+        return res
     else:
-        return dict(_obj = _pickle_load, path = path, asof = dt()) 
-    
+        try:
+            path = root_path_check(path)
+            path = path if path.endswith(_pickle) else path + _pickle
+            path = pickle_dump(value, path = path, max_workers=max_workers, pool_name = pool_name)
+            return dict(_obj = _pickle_load, path = path)
+        except pickle.PicklingError:
+            return value
+    return
     
     if is_pd(value):
         path = root_path_check(path)
